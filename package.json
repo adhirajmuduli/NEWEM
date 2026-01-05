@@ -1,0 +1,32 @@
+{
+  "name": "local-rss-aggregator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "dist/app/main/app.js",
+  "scripts": {
+    "clean": "rimraf dist",
+    "prebuild": "npm run clean",
+    "build": "tsc -p tsconfig.json && npm run copy-assets",
+    "copy-assets": "cpx \"app/core/storage/migrations/**/*\" dist/app/core/storage/migrations && cpx \"app/renderer/index.html\" dist/app/renderer && cpx \"app/renderer/styles/**/*\" dist/app/renderer/styles",
+    "start": "electron ."
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.6.0",
+    "fast-xml-parser": "^4.5.3",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "undici": "^6.22.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "copyfiles": "^2.4.1",
+    "cpx": "^1.5.0",
+    "electron": "^28.3.3",
+    "electron-rebuild": "^3.2.9",
+    "rimraf": "^6.1.2",
+    "typescript": "^5.9.3"
+  }
+}
