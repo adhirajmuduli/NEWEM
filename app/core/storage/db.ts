@@ -25,7 +25,7 @@ function applyMigrations(db: Database.Database) {
   const applied = new Set<string>(
     db.prepare('SELECT name FROM schema_migrations ORDER BY id').all().map((r: any) => r.name)
   );
-  const files = ['001_init.sql', '002_indexes.sql'];
+  const files = ['001_init.sql', '002_indexes.sql', '003_fetch_log.sql', '010_seed_sections_and_feeds.sql'];
   db.transaction(() => {
     for (const f of files) {
       if (applied.has(f)) continue;
