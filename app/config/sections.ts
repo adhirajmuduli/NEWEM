@@ -32,4 +32,12 @@ export const SECTION_CONFIG: SectionConfig[] = [
     fetchIntervalMinutes: 30,
     enabled: true,
   },
+  {
+    key: 'bhubaneswar',
+    name: 'Bhubaneswar',
+    position: 3,
+    feeds: ['https://timesofindia.indiatimes.com/rssfeeds/4118235.cms' ],
+    fetchIntervalMinutes: 30,
+    enabled: true,
+  },
 ];
