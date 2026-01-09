@@ -6,6 +6,12 @@ import type {
   ItemsQueryPayload,
   MarkItemsSeenPayload,
   MarkSectionSeenPayload,
+  MarkItemReadPayload,
+  MarkItemReadResponse,
+  ToggleItemImportantPayload,
+  ToggleItemImportantResponse,
+  ImportantItemsQueryPayload,
+  ImportantItemsQueryResponse,
 } from '../shared/ipcTypes';
 
 declare const require: any;
@@ -41,6 +47,16 @@ const api: PreloadApi = {
 
   markSectionSeen(payload: MarkSectionSeenPayload) {
     return ipcRenderer.invoke('sections:markSeen', payload);
+  },
+  // Step 9
+  markItemRead(payload: MarkItemReadPayload): Promise<MarkItemReadResponse> {
+    return ipcRenderer.invoke('item:markRead', payload);
+  },
+  toggleItemImportant(payload: ToggleItemImportantPayload): Promise<ToggleItemImportantResponse> {
+    return ipcRenderer.invoke('item:toggleImportant', payload);
+  },
+  queryImportant(payload?: ImportantItemsQueryPayload): Promise<ImportantItemsQueryResponse> {
+    return ipcRenderer.invoke('items:important', payload ?? {});
   },
 };
 

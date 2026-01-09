@@ -11,7 +11,11 @@
     const [, setTick] = React.useState(0);
 
     React.useEffect(() => {
-      Store.fetchItems(props.sectionId);
+      if (props.sectionId === -1) {
+        Store.fetchImportant();
+      } else {
+        Store.fetchItems(props.sectionId);
+      }
       return Store.subscribe(() => setTick((x: number) => x + 1));
     }, [props.sectionId]);
 
@@ -26,17 +30,19 @@
         "div",
         { style: { display: "flex", alignItems: "center", justifyContent: "space-between" } },
         React.createElement("h2", { className: "title" }, props.title),
-        React.createElement(
-          "button",
-          { type: "button", onClick: () => Store.markSectionSeen(props.sectionId) },
-          "Mark section seen"
-        )
+        props.sectionId !== -1
+          ? React.createElement(
+              "button",
+              { type: "button", onClick: () => Store.markSectionSeen(props.sectionId) },
+              "Mark section seen"
+            )
+          : null
       ),
       loading
         ? React.createElement("div", { className: "placeholder" }, "Loading…")
         : error
         ? React.createElement("div", { className: "placeholder" }, String(error))
-        : React.createElement(C.ItemList, { items })
+        : React.createElement(C.ItemList, { sectionId: props.sectionId, items })
     );
   }
 

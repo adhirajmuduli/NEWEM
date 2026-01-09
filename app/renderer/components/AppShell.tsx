@@ -14,6 +14,7 @@
       React.createElement(
         "div",
         { className: "sections" },
+        React.createElement(C.SectionPanel, { sectionId: -1, title: "Important" }),
         React.createElement(C.SectionPanel, { sectionId: 1, title: "Tech" }),
         React.createElement(C.SectionPanel, { sectionId: 2, title: "World" }),
         React.createElement(C.SectionPanel, { sectionId: 3, title: "Sports" })

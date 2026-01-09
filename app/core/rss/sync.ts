@@ -1,3 +1,8 @@
+// NOTE:
+// This module must not update feed lifecycle metadata
+// (last_fetched_at, last_error, is_fetching).
+// Those are owned exclusively by the scheduler + feedsDao.
+
 import Database from 'better-sqlite3';
 import { fetchFeed } from './fetch';
 import { parseFeed } from './parser';

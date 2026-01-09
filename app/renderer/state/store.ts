@@ -71,6 +71,54 @@ const store = {
       notify();
     }
   },
+
+  // Step 9: mark a single item as read, then refresh section to honor visibility rules
+  async markItemRead(sectionId: number, itemId: number) {
+    try {
+      await api.markItemRead({ itemId });
+    } finally {
+      // Always refresh to enforce: read hidden unless important
+      await store.fetchItems(sectionId);
+    }
+  },
+
+  // Step 9: toggle important flag, then refresh section
+  async toggleItemImportant(sectionId: number, itemId: number) {
+    const sec = ensureSection(sectionId);
+
+    // Optimistic update
+    sec.items = sec.items.map(it =>
+        it.id === itemId
+        ? { ...it, is_important: it.is_important ? 0 : 1 }
+        : it
+    );
+    notify();
+
+    try {
+        await api.toggleItemImportant({ itemId });
+    } catch {
+        // Optional: revert on failure
+    }
+  },
+
+  // Step 9: fetch all important items into a virtual section (-1)
+  async fetchImportant() {
+    const sectionId = -1;
+    const sec = ensureSection(sectionId);
+    sec.loading = true;
+    sec.error = null;
+    notify();
+
+    try {
+      const res = await api.queryImportant({});
+      sec.items = res.items as READIT.ItemWire[];
+    } catch (e) {
+      sec.error = e instanceof Error ? e.message : String(e);
+    } finally {
+      sec.loading = false;
+      notify();
+    }
+  },
 };
 
 (function attach() {

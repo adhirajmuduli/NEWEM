@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import Database from 'better-sqlite3';
+import { syncSectionsFromConfig } from './sectionsSync';
+import { ensureFeedColumns } from './migrate';
 
 let dbInstance: Database.Database | null = null;
 
@@ -25,7 +27,7 @@ function applyMigrations(db: Database.Database) {
   const applied = new Set<string>(
     db.prepare('SELECT name FROM schema_migrations ORDER BY id').all().map((r: any) => r.name)
   );
-  const files = ['001_init.sql', '002_indexes.sql', '003_fetch_log.sql', '010_seed_sections_and_feeds.sql'];
+  const files = ['001_init.sql', '002_indexes.sql', '003_fetch_log.sql', '004_sections_key.sql', '005_item_state.sql'];
   db.transaction(() => {
     for (const f of files) {
       if (applied.has(f)) continue;
@@ -47,6 +49,12 @@ export function initDb(dbPath?: string) {
   const file = path.join(base, 'app.db');
   const db = new Database(file);
   applyMigrations(db);
+
+  ensureFeedColumns(db);
+  
+  // NEW: configuration-driven sections/feeds sync (idempotent)
+  syncSectionsFromConfig(db);
+
   dbInstance = db;
   return dbInstance;
 }

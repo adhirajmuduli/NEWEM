@@ -74,3 +74,21 @@ html, body, #root { height: 100%; margin: 0; padding: 0; background: var(--bg); 
 .item-head a:hover { text-decoration: underline; }
 .item-meta { color: var(--muted); font-size: 12px; }
 .item-desc { color: var(--muted); margin-top: 4px; font-size: 13px; }
+.item-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  gap: 12px;
+}
+
+.star {
+  margin-left: 8px;
+  cursor: pointer;
+  color: #999;
+  background: none;
+  border: none;
+  font-size: 16px;
+}
+
+.star.active {
+  color: #f5b301;
+}

@@ -9,6 +9,8 @@ import {
   markSeen as markItemsSeen,
   markSectionSeen,
   ItemRow,
+  markItemRead,
+  toggleItemImportant,
 } from '../core/storage/dao/itemsDao';
 import { getShowSeen } from '../core/storage/dao/settingsDao';
 import { fetchAndIngestFeed } from '../core/rss/fetcher';
@@ -70,18 +72,50 @@ export function registerIpcHandlers(ipc: IpcMainLike) {
     return { items };
   });
 
-  // Mark specific items as seen
+  // Mark specific items as seen (legacy)
   ipc.handle('items:markSeen', async (_evt, payload: MarkItemsSeenPayload): Promise<MarkItemsSeenResponse> => {
     const db = getDb();
     const changed = markItemsSeen(db, payload.itemIds);
     return { changed };
   });
 
-  // Mark entire section as seen
+  // Mark entire section as seen (legacy)
   ipc.handle('sections:markSeen', async (_evt, payload: MarkSectionSeenPayload): Promise<MarkSectionSeenResponse> => {
     const db = getDb();
     const changed = markSectionSeen(db, payload.sectionId);
     return { changed };
+  });
+
+  // Step 9: Mark single item as read
+  ipc.handle('item:markRead', async (_evt, payload: { itemId: number }) => {
+    const db = getDb();
+    const changed = markItemRead(db, payload.itemId);
+    return { changed } as { changed: number };
+  });
+
+  // Step 9: Toggle important
+  ipc.handle('item:toggleImportant', async (_evt, payload: { itemId: number }) => {
+    const db = getDb();
+    const is_important = toggleItemImportant(db, payload.itemId);
+    return { is_important } as { is_important: 0 | 1 };
+  });
+
+  // Step 9: Virtual Important section query (all important items)
+  ipc.handle('items:important', async (_evt, payload: { limit?: number; before?: string | null }) => {
+    const db = getDb();
+    const limit = Math.max(1, Math.min(200, payload?.limit ?? 50));
+    const beforeClause = payload?.before ? 'AND i.published_at < @before' : '';
+    const stmt = db.prepare(
+      `SELECT i.*, f.title AS feed_title, f.site_url
+       FROM items i
+       JOIN feeds f ON f.id = i.feed_id
+       JOIN item_state s ON s.item_id = i.id AND s.is_important = 1
+       WHERE 1=1 ${beforeClause}
+       ORDER BY COALESCE(i.published_at, i.created_at) DESC
+       LIMIT @limit`
+    );
+    const items = stmt.all({ limit, before: payload?.before ?? null }) as ItemRow[];
+    return { items } as { items: ItemRow[] };
   });
 }
 

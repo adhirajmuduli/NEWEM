@@ -19,6 +19,8 @@ declare global {
       feed_title?: string | null;
       published_at?: string | null;
       seen_at?: string | null;
+      is_read?: 0 | 1;
+      is_important?: 0 | 1;
     }
 
     /* ---------- section state ---------- */

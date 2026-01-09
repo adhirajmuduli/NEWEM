@@ -24,6 +24,49 @@ export function createFeed(db: Database.Database, url: string) {
   return stmt.get(url) as Feed;
 }
 
+export function isFeedDue(feed: {
+  last_fetched_at?: string | null;
+  fetch_interval_minutes?: number | null;
+}) {
+  if (!feed.last_fetched_at) return true;
+  if (!feed.fetch_interval_minutes) return true;
+
+  const last = new Date(feed.last_fetched_at).getTime();
+  const now = Date.now();
+  return now - last >= feed.fetch_interval_minutes * 60_000;
+}
+
+export function tryLockFeed(db: Database.Database, feedId: number): boolean {
+  const r = db.prepare(`
+    UPDATE feeds
+    SET is_fetching = 1
+    WHERE id = ? AND is_fetching = 0
+  `).run(feedId);
+
+  return r.changes === 1;
+}
+
+export function markFeedFetched(db: Database.Database, feedId: number) {
+  db.prepare(`
+    UPDATE feeds
+    SET
+      is_fetching = 0,
+      last_fetched_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+      fetch_error = NULL
+    WHERE id = ?
+  `).run(feedId);
+}
+
+export function markFeedError(db: Database.Database, feedId: number, message: string) {
+  db.prepare(`
+    UPDATE feeds
+    SET
+      is_fetching = 0,
+      fetch_error = ?
+    WHERE id = ?
+  `).run(message, feedId);
+}
+
 export function bulkAddFeeds(db: Database.Database, urlsText: string) {
   const urls = urlsText
     .split(/\r?\n/)

@@ -2,6 +2,7 @@ import { getDb } from '../core/storage/db';
 import { listFeeds, type Feed } from '../core/storage/dao/feedsDao';
 import { syncFeedByUrl, type SyncResult } from '../core/rss/sync';
 import { withModule } from './logging';
+import { tryLockFeed, markFeedFetched, markFeedError } from '../core/storage/dao/feedsDao';
 
 type SchedulerState = 'stopped' | 'running';
 
@@ -65,9 +66,10 @@ export class Scheduler {
 
     const now = Date.now();
     for (const feed of feeds) {
-      if (this.inFlight.has(feed.id)) continue;
       const dueAt = nextDueAt(feed);
       if (dueAt > now) continue;
+
+      if (!tryLockFeed(db, feed.id)) continue;
 
       this.inFlight.add(feed.id);
       void this.fetchOne(feed).finally(() => this.inFlight.delete(feed.id));
@@ -121,7 +123,9 @@ export class Scheduler {
         });
       }
 
+      markFeedError(db, feed.id, errMsg);
       return { status: 'error', newItems: 0 };
+
     }
   }
 }
