@@ -259,10 +259,4 @@ This application functions as a local RSS reader and does not operate as a news 
 - Offline-first view with retention controls.
 - Theming and accessibility refinements.
 
-## Scope and Change Control
-"README.md is authoritative. Do not add features or alter scope without updating it."
-
-# Recommended Actions
-- **Review** and confirm the README structure and plan.
-- **Proceed with Step 1** (Directory Structure) per Development Plan once approved.
 
