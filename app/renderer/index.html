@@ -5,28 +5,12 @@
     <title>READIT</title>
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' https://unpkg.com; connect-src 'self'; img-src 'self' data:;"
+      content="default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data: https:; object-src 'none'; base-uri 'none';"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="stylesheet" href="./styles/app.css" />
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   </head>
   <body>
-    <div id="root"></div>
-
-    <!-- State before components -->
-    <script src="./state/store.js"></script>
-    <script src="./state/queries.js"></script>
-    <!-- Utils (sanitizer) -->
-    <script src="./utils/sanitizeHtml.js"></script>
-    <!-- Components -->
-    <script src="./components/Toolbar.js"></script>
-    <script src="./components/ItemList.js"></script>
-    <script src="./components/SectionPanel.js"></script>
-    <script src="./components/AppShell.js"></script>
-
-    <!-- Entrypoint -->
-    <script src="./index.js"></script>
+    <div id="root"><main class="boot-fallback" role="status"><h1>READIT</h1><p>Starting local workspace...</p></main></div>
+    <script type="module" src="./index.tsx"></script>
   </body>
 </html>

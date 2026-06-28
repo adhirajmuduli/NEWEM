@@ -1,17 +1,22 @@
-/* global React */
+import React from 'react';
 
-(function attach() {
-  (window as any).READIT = (window as any).READIT || {};
-  (window as any).READIT.Components = (window as any).READIT.Components || {};
-
-  function Toolbar(): any {
-    return React.createElement(
-      "div",
-      { className: "toolbar" },
-      React.createElement("h1", null, "READIT"),
-      React.createElement("button", { type: "button" }, "Refresh")
-    );
-  }
-
-  (window as any).READIT.Components.Toolbar = Toolbar;
-})();
+export function Toolbar(props: {
+  busy: boolean;
+  onRefreshAll(): void;
+  onOpenManager(): void;
+}) {
+  return (
+    <div className="toolbar">
+      <div>
+        <h1>READIT</h1>
+        <span>Local RSS workspace</span>
+      </div>
+      <div className="toolbar-actions">
+        <button type="button" onClick={props.onOpenManager}>Manage</button>
+        <button type="button" className="primary" onClick={props.onRefreshAll} disabled={props.busy}>
+          {props.busy ? 'Refreshing...' : 'Refresh all'}
+        </button>
+      </div>
+    </div>
+  );
+}

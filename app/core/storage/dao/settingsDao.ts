@@ -20,8 +20,18 @@ export function setSetting(db: Database.Database, key: string, value: SettingVal
   ).run(key, json);
 }
 
+export type SectionAppearanceSetting = {
+  mode: 'solid' | 'gradient' | 'image';
+  solid?: string;
+  gradientFrom?: string;
+  gradientTo?: string;
+  imageDataUrl?: string;
+};
+
 export interface LayoutSetting {
+  mode?: 'stack' | 'columns' | 'mosaic' | 'focus';
   panels: Array<{ id: string; x: number; y: number; w: number; h: number }>;
+  appearance?: Record<string, SectionAppearanceSetting>;
 }
 
 export type ThemeMode = 'light' | 'dark';

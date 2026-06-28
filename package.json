@@ -5,28 +5,44 @@
   "type": "commonjs",
   "main": "dist/app/main/app.js",
   "scripts": {
-    "clean": "rimraf dist",
-    "prebuild": "npm run clean",
-    "build": "tsc -p tsconfig.json && npm run copy-assets",
-    "copy-assets": "cpx \"app/core/storage/migrations/**/*\" dist/app/core/storage/migrations && cpx \"app/renderer/index.html\" dist/app/renderer && cpx \"app/renderer/styles/**/*\" dist/app/renderer/styles",
-    "start": "electron ."
+    "clean": "node scripts/clean-dist.cjs",
+    "typecheck": "tsc -p tsconfig.electron.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "build:renderer": "vite build --config vite.config.mjs --configLoader native",
+    "copy-assets": "node scripts/copy-assets.cjs",
+    "build": "npm run clean && npm run typecheck && npm run build:electron && npm run build:renderer && npm run copy-assets",
+    "test": "vitest run --config vite.config.mjs --configLoader native --passWithNoTests",
+    "test:unit": "vitest run --config vite.config.mjs --configLoader native tests/unit --passWithNoTests",
+    "test:db": "vitest run --config vite.config.mjs --configLoader native tests/db --passWithNoTests",
+    "test:security": "vitest run --config vite.config.mjs --configLoader native tests/security --passWithNoTests",
+    "test:e2e": "vitest run --config vite.config.mjs --configLoader native tests/e2e --passWithNoTests",
+    "validate": "npm run build && npm run test",
+    "start": "electron .",
+    "dev": "npm run build && npm start",
+    "rebuild:native": "node scripts/prepare-native.cjs",
+    "prestart": "node scripts/verify-native.cjs",
+    "postinstall": "node scripts/prepare-native.cjs"
   },
   "dependencies": {
-    "better-sqlite3": "^9.6.0",
-    "fast-xml-parser": "^4.5.3",
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3",
-    "undici": "^6.22.0"
+    "better-sqlite3": "^12.11.1",
+    "fast-xml-parser": "^5.9.3",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "undici": "^6.27.0"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.1",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/react": "^19.2.7",
+    "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
     "copyfiles": "^2.4.1",
-    "cpx": "^1.5.0",
-    "electron": "^28.3.3",
-    "electron-rebuild": "^3.2.9",
-    "rimraf": "^6.1.2",
-    "typescript": "^5.9.3"
+    "cpx2": "^7.0.2",
+    "electron": "^42.5.0",
+    "jsdom": "^29.1.1",
+    "rimraf": "^6.1.3",
+    "typescript": "^6.0.3",
+    "vite": "^8.1.0",
+    "vitest": "^4.1.9"
   }
 }

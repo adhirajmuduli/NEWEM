@@ -1,19 +1,28 @@
 type LogLevel = 'info' | 'warn' | 'error' | 'debug';
 
+export type LogEntry = {
+  t: string;
+  level: LogLevel;
+  msg: string;
+  meta?: Record<string, unknown>;
+};
+
+const MAX_ENTRIES = 1000;
+const entries: LogEntry[] = [];
+
 function emit(level: LogLevel, msg: string, meta?: Record<string, unknown>) {
+  const entry: LogEntry = { t: new Date().toISOString(), level, msg, ...(meta ? { meta } : {}) };
+  entries.push(entry);
+  if (entries.length > MAX_ENTRIES) entries.splice(0, entries.length - MAX_ENTRIES);
   try {
-    // Keep output stable JSON for easy parsing
-    const line = JSON.stringify({
-      t: new Date().toISOString(),
-      level,
-      msg,
-      ...(meta ? { meta } : {}),
-    });
-    console.log(line);
+    console.log(JSON.stringify(entry));
   } catch {
-    // Fall back if meta is not serializable
-    console.log(JSON.stringify({ t: new Date().toISOString(), level, msg }));
+    console.log(JSON.stringify({ t: entry.t, level, msg }));
   }
+}
+
+export function getRecentLogs(limit = 500) {
+  return entries.slice(-Math.max(1, Math.min(MAX_ENTRIES, limit)));
 }
 
 export const logger = {

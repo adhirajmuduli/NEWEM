@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "types": ["vite/client", "react", "react-dom"],
+    "jsx": "react-jsx",
+    "noEmit": true
+  },
+  "include": [
+    "app/renderer/**/*",
+    "app/shared/**/*",
+    "globals.d.ts",
+    "vite.config.mts"
+  ],
+  "exclude": ["dist", "node_modules"]
+}

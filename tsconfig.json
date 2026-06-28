@@ -1,20 +1,11 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "CommonJS",
-    "jsx": "react-jsx",
+    "target": "ES2022",
     "strict": true,
-    "types": ["react", "react-dom"],
-    "lib": ["DOM", "ES2020"],
-    "esModuleInterop": true,
     "skipLibCheck": true,
     "noEmitOnError": true,
-    "moduleResolution": "node",
-    "outDir": "./dist"
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true
   },
-  "include": [
-    "app/**/*",
-    "scripts/**/*",
-    "globals.d.ts"
-  ]
+  "files": ["globals.d.ts"]
 }

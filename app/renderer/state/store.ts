@@ -1,4 +1,4 @@
-// store.ts — browser store (no imports/exports)
+// store.ts --- browser store (no imports/exports)
 
 const state: READIT.StoreState = {
   sections: new Map(),
@@ -125,3 +125,5 @@ const store = {
   (window as any).READIT = (window as any).READIT || {};
   (window as any).READIT.Store = store;
 })();
+
+export {};
