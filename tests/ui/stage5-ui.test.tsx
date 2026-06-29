@@ -160,4 +160,43 @@ describe('Stage 5 section and feed UI', () => {
     expect(api.addFeedToSection).toHaveBeenCalledWith({ sectionId: 1, url: 'https://example.com/rss.xml', fetchIntervalMinutes: 30, enabled: true });
     expect(document.body.textContent).toContain('Feed 1');
   });
+
+  it('keeps refreshed items visible when one source fails', async () => {
+    await click('Manage');
+    await setInput('https://example.com/feed.xml', 'https://example.com/rss.xml');
+    await click('Test feed');
+    await click('Add feed');
+
+    vi.mocked(api.syncTrigger).mockResolvedValue({
+      status: 'ok',
+      scope: 'section',
+      requested: 2,
+      triggered: 2,
+      ok: 1,
+      notModified: 0,
+      errors: 1,
+      newItems: 1,
+      results: [],
+    });
+    vi.mocked(api.queryItems).mockResolvedValue({
+      items: [{
+        id: 1,
+        feed_id: 1,
+        link: 'https://example.com/article',
+        title: 'Successful source item',
+        description: 'Body',
+        published_at: null,
+        dedupe_key: 'article-1',
+        created_at: new Date().toISOString(),
+        feed_title: 'Feed 1',
+        is_read: 0,
+        is_important: 0,
+      }],
+    });
+
+    await click('Refresh');
+
+    expect(document.body.textContent).toContain('Successful source item');
+    expect(document.body.textContent).toContain('1 failed');
+  });
 });

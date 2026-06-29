@@ -1,5 +1,8 @@
 import React from 'react';
 import type { ItemWire } from '../../shared/ipcTypes';
+import { BentoGrid } from './ui/bento-grid';
+import { DigitalButton } from './ui/digital-button';
+import { MagicCard } from './ui/magic-card';
 
 function fmtTime(iso?: string | null): string {
   if (!iso) return 'No date';
@@ -18,7 +21,7 @@ function stripUnsafeHtml(html?: string | null) {
       if (name.startsWith('on') || value.startsWith('javascript:')) node.removeAttribute(attr.name);
     }
   });
-  return doc.body.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+  return doc.body.textContent?.replace(/s+/g, ' ').trim() ?? '';
 }
 
 export function ItemList(props: {
@@ -32,9 +35,14 @@ export function ItemList(props: {
   }
 
   return (
-    <div className="item-list" aria-label="News items">
-      {props.items.map((item) => (
-        <article key={item.id} className={item.is_read ? 'item-card read' : 'item-card'}>
+    <BentoGrid className="item-list" aria-label="News items">
+      {props.items.map((item, index) => (
+        <MagicCard
+          as="article"
+          key={item.id}
+          data-featured={index % 7 === 0 ? 'true' : undefined}
+          className={item.is_read ? 'item-card read' : 'item-card'}
+        >
           <div className="item-topline">
             <span>{item.feed_title || 'Unknown feed'}</span>
             <span>{fmtTime(item.published_at)}</span>
@@ -51,18 +59,26 @@ export function ItemList(props: {
           </a>
           {item.description ? <p className="item-desc">{stripUnsafeHtml(item.description)}</p> : null}
           <div className="item-actions">
-            <button type="button" onClick={() => props.openExternalItem(props.sectionId, item)}>Open</button>
-            <button
+            <DigitalButton
               type="button"
-              className={item.is_important ? 'important active' : 'important'}
+              effect="shiny"
+              className="item-action-button"
+              onClick={() => props.openExternalItem(props.sectionId, item)}
+            >
+              Open
+            </DigitalButton>
+            <DigitalButton
+              type="button"
+              effect="shimmer"
+              className={item.is_important ? 'item-action-button important active' : 'item-action-button important'}
               onClick={() => props.onToggleImportant(props.sectionId, item)}
               aria-pressed={item.is_important === 1}
             >
               {item.is_important ? 'Important' : 'Mark important'}
-            </button>
+            </DigitalButton>
           </div>
-        </article>
+        </MagicCard>
       ))}
-    </div>
+    </BentoGrid>
   );
 }

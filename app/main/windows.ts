@@ -1,7 +1,8 @@
-import { BrowserWindow, shell } from 'electron';
+import { BrowserWindow, Menu, shell } from 'electron';
 import path from 'path';
 import { getSecureWebPreferences, isAllowedExternalUrl, loadCspConfig, serializeCsp } from './security';
 import { withModule } from './logging';
+import { installWindowChrome } from './windowChrome';
 
 const log = withModule('window');
 
@@ -51,14 +52,20 @@ function installRendererDiagnostics(win: BrowserWindow) {
 
 export function createMainWindow(): BrowserWindow {
   const preloadPath = path.resolve(__dirname, '..', 'preload', 'bridge.js');
+  Menu.setApplicationMenu(null);
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
     show: true,
+    fullscreen: true,
+    autoHideMenuBar: true,
+    title: '',
     backgroundColor: '#0f1218',
     webPreferences: getSecureWebPreferences(preloadPath),
   });
 
+  installWindowChrome(win);
+  win.on('page-title-updated', (event) => event.preventDefault());
   installNavigationGuards(win);
   installRendererDiagnostics(win);
   void win.loadFile(path.resolve(__dirname, '..', 'renderer', 'index.html')).catch((error) => {

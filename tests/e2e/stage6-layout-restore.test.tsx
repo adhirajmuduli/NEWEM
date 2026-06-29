@@ -67,16 +67,18 @@ afterEach(() => vi.restoreAllMocks());
 
 describe('Stage 6 persisted layout restore', () => {
   it('restores resized panel order and width after remount', async () => {
-    const layoutRef = { current: { mode: 'columns', panels: [{ id: 'world', x: 0, y: 0, w: 64, h: 1 }, { id: 'tech', x: 1, y: 0, w: 42, h: 1 }], appearance: {} } as LayoutWire };
+    const layoutRef = { current: { mode: 'columns', theme: 'space', panels: [{ id: 'world', x: 0, y: 0, w: 64, h: 1 }, { id: 'tech', x: 1, y: 0, w: 42, h: 1 }], appearance: {} } as LayoutWire };
     let root: Root = await mount(apiWithLayout(layoutRef));
 
     expect((document.querySelector('[data-panel-id="world"]') as HTMLElement).style.order).toBe('0');
     expect((document.querySelector('[data-panel-id="world"]') as HTMLElement).style.getPropertyValue('--panel-width')).toBe('64%');
+    expect(document.documentElement.dataset.colorScheme).toBe('space');
     root.unmount();
 
     root = await mount(apiWithLayout(layoutRef));
     expect((document.querySelector('[data-panel-id="world"]') as HTMLElement).style.order).toBe('0');
     expect((document.querySelector('[data-panel-id="world"]') as HTMLElement).style.getPropertyValue('--panel-width')).toBe('64%');
+    expect(document.documentElement.dataset.colorScheme).toBe('space');
     root.unmount();
   });
 });

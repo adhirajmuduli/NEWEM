@@ -5,7 +5,10 @@
     "skipLibCheck": true,
     "noEmitOnError": true,
     "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "paths": {
+      "@/*": ["./app/renderer/*"]
+    }
   },
   "files": ["globals.d.ts"]
 }

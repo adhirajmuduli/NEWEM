@@ -13,6 +13,9 @@ afterEach(() => {
 describe('feed URL validation', () => {
   it('normalizes public HTTP(S) URLs and rejects local/private/custom protocols', () => {
     expect(normalizeFeedUrl('HTTPS://Example.com/rss.xml#frag')).toEqual({ ok: true, url: 'https://example.com/rss.xml' });
+    expect(normalizeFeedUrl('https://example.com/feed/')).toEqual({ ok: true, url: 'https://example.com/feed' });
+    expect(normalizeFeedUrl('https://example.com/feed/', { preserveTrailingSlash: true }))
+      .toEqual({ ok: true, url: 'https://example.com/feed/' });
     expect(normalizeFeedUrl('file:///tmp/feed.xml')).toMatchObject({ ok: false, code: 'unsupported_protocol' });
     expect(normalizeFeedUrl('http://localhost/rss.xml')).toMatchObject({ ok: false, code: 'private_address' });
     expect(normalizeFeedUrl('http://192.168.1.2/rss.xml')).toMatchObject({ ok: false, code: 'private_address' });
@@ -25,6 +28,8 @@ describe('fetchFeed', () => {
     const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
       expect((init.headers as Record<string, string>)['If-None-Match']).toBe('abc');
       expect((init.headers as Record<string, string>)['If-Modified-Since']).toBe('yesterday');
+      expect((init.headers as Record<string, string>).Accept).toContain('application/rss+xml');
+      expect((init.headers as Record<string, string>)['User-Agent']).toContain('READIT');
       return response('<rss><channel><title>T</title></channel></rss>', {
         status: 200,
         headers: { etag: 'next', 'last-modified': 'today', 'content-type': 'text/plain' },
@@ -71,6 +76,21 @@ describe('fetchFeed', () => {
     vi.stubGlobal('fetch', vi.fn(async () => response('nope', { status: 503 })));
     const httpError = await fetchFeed('https://example.com/rss.xml');
     expect(httpError).toMatchObject({ status: 'error', httpStatus: 503, error: { code: 'http_error' } });
+  });
+
+  it('follows a trailing-slash redirect without normalizing it into a loop', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === 'https://example.com/feed') {
+        return response('', { status: 301, headers: { location: '/feed/' } });
+      }
+      return response('<rss><channel><title>T</title></channel></rss>', { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await fetchFeed('https://example.com/feed');
+
+    expect(result).toMatchObject({ status: 'ok', url: 'https://example.com/feed/' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('limits redirects and validates redirected targets', async () => {

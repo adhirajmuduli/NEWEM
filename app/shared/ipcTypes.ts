@@ -1,3 +1,5 @@
+import type { ColorSchemeId } from './colorSchemes';
+
 export const PRELOAD_API_VERSION = 1 as const;
 
 export type ApiEnvelope<T> = { apiVersion: typeof PRELOAD_API_VERSION; data: T };
@@ -77,6 +79,7 @@ export type LayoutModeWire = 'stack' | 'columns' | 'mosaic' | 'focus';
 
 export type LayoutWire = {
   mode?: LayoutModeWire;
+  theme?: ColorSchemeId;
   panels: Array<{ id: string; x: number; y: number; w: number; h: number }>;
   appearance?: Record<string, SectionAppearanceWire>;
 };

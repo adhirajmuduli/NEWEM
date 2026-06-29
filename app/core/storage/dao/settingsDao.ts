@@ -30,6 +30,7 @@ export type SectionAppearanceSetting = {
 
 export interface LayoutSetting {
   mode?: 'stack' | 'columns' | 'mosaic' | 'focus';
+  theme?: string;
   panels: Array<{ id: string; x: number; y: number; w: number; h: number }>;
   appearance?: Record<string, SectionAppearanceSetting>;
 }

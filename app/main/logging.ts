@@ -10,6 +10,13 @@ export type LogEntry = {
 const MAX_ENTRIES = 1000;
 const entries: LogEntry[] = [];
 
+function guardOutputStream(stream: NodeJS.WriteStream | undefined) {
+  stream?.on('error', () => undefined);
+}
+
+guardOutputStream(process.stdout);
+guardOutputStream(process.stderr);
+
 function emit(level: LogLevel, msg: string, meta?: Record<string, unknown>) {
   const entry: LogEntry = { t: new Date().toISOString(), level, msg, ...(meta ? { meta } : {}) };
   entries.push(entry);
@@ -17,7 +24,7 @@ function emit(level: LogLevel, msg: string, meta?: Record<string, unknown>) {
   try {
     console.log(JSON.stringify(entry));
   } catch {
-    console.log(JSON.stringify({ t: entry.t, level, msg }));
+    // Structured entries remain available through diagnostics when terminal output is unavailable.
   }
 }
 

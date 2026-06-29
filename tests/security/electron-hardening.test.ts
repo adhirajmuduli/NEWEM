@@ -40,4 +40,11 @@ describe('Electron hardening policy', () => {
   it('preload API contract is versioned', () => {
     expect(PRELOAD_API_VERSION).toBe(1);
   });
+
+  it('starts fullscreen without the redundant native application menu', () => {
+    const source = fs.readFileSync(path.resolve(process.cwd(), 'app', 'main', 'windows.ts'), 'utf8');
+    expect(source).toContain('fullscreen: true');
+    expect(source).toContain('Menu.setApplicationMenu(null)');
+    expect(source).toContain('installWindowChrome(win)');
+  });
 });

@@ -24,7 +24,10 @@ function isLocalOrPrivateHost(hostname: string) {
   return isPrivateIpv4(host);
 }
 
-export function normalizeFeedUrl(input: string): FeedUrlValidationResult {
+export function normalizeFeedUrl(
+  input: string,
+  options: { preserveTrailingSlash?: boolean } = {}
+): FeedUrlValidationResult {
   const raw = input.trim();
   if (!raw) return { ok: false, code: 'invalid_url', message: 'Feed URL is empty' };
 
@@ -47,7 +50,7 @@ export function normalizeFeedUrl(input: string): FeedUrlValidationResult {
   parsed.hostname = parsed.hostname.toLowerCase();
   parsed.username = '';
   parsed.password = '';
-  if (parsed.pathname.length > 1 && parsed.pathname.endsWith('/')) {
+  if (!options.preserveTrailingSlash && parsed.pathname.length > 1 && parsed.pathname.endsWith('/')) {
     parsed.pathname = parsed.pathname.slice(0, -1);
   }
 

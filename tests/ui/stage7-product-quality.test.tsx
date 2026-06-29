@@ -87,6 +87,34 @@ describe('Stage 7 renderer workflows', () => {
     await click('Search');
     expect(api.queryItems).toHaveBeenLastCalledWith(expect.objectContaining({ sectionId: -1, query: 'climate', includeSeen: true }));
 
+    const dateSelect = document.querySelector('select[aria-label="Date"]') as HTMLSelectElement;
+    const selectSetter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value')?.set;
+    const consoleInfo = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    await act(async () => {
+      selectSetter?.call(dateSelect, 'custom');
+      dateSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(document.querySelector('.date-trigger')).toBeNull();
+    expect(document.querySelectorAll('.rdp-outside button')).toHaveLength(0);
+    expect(document.querySelectorAll('button[data-day]:disabled').length).toBeGreaterThan(0);
+    const calendarDay = Array.from(document.querySelectorAll<HTMLButtonElement>('button[data-day]'))
+      .find((button) => !button.disabled && !button.closest('.rdp-outside'));
+    expect(calendarDay).toBeTruthy();
+    await act(async () => calendarDay!.click());
+    await flush();
+    expect(consoleInfo).toHaveBeenCalledWith('search_custom_date_selected', expect.any(String));
+    expect(dateSelect.selectedOptions[0].textContent).not.toBe('Custom date');
+    expect(document.querySelector('[aria-label="Custom date calendar"]')).toBeNull();
+
+    await click('Search');
+    const exactDateQuery = vi.mocked(api.queryItems).mock.calls.at(-1)?.[0];
+    expect(exactDateQuery).toEqual(expect.objectContaining({
+      publishedAfter: expect.any(String),
+      publishedBefore: expect.any(String),
+    }));
+    expect(new Date(exactDateQuery!.publishedBefore!).getTime())
+      .toBeGreaterThan(new Date(exactDateQuery!.publishedAfter!).getTime());
+
     await click('Mute');
     expect(api.updateFeed).toHaveBeenCalledWith({ feedId: 7, muted: true });
 

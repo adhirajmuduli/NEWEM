@@ -1,10 +1,13 @@
 import React from 'react';
+import { applyColorScheme, COLOR_SCHEMES, DEFAULT_COLOR_SCHEME_ID, getColorScheme } from '../../shared/colorSchemes';
+import type { ColorSchemeId } from '../../shared/colorSchemes';
 import type { FeedWire, ItemWire, LayoutModeWire, LayoutWire, PreloadApi, SectionAppearanceWire, SectionWire, SyncProgressWire } from '../../shared/ipcTypes';
 import { SectionPanel } from './SectionPanel';
 import { ItemList } from './ItemList';
 import { Toolbar } from './Toolbar';
 import { ResizeHandle } from '../layout/DragHandle';
 import { clampPanelWidth, movePanel, normalizeLayoutForSections, orderedSectionsForLayout, panelWidth, resetLayoutForSections, resizePanel } from '../layout/GridLayout';
+import { exactLocalDayRange, relativeDateRange, type SearchDateMode } from '../utils/dateRange';
 
 declare global {
   interface Window {
@@ -12,8 +15,10 @@ declare global {
   }
 }
 
-type ItemState = Record<number, { loading: boolean; error: string | null; items: ItemWire[] }>;
+type ItemState = Record<number, { loading: boolean; error: string | null; warning: string | null; items: ItemWire[] }>;
 type FeedTestState = { url: string; status: 'idle' | 'testing' | 'ok' | 'error'; message: string };
+
+const PANEL_CONTROLS_ENABLED = false;
 
 function api() {
   if (!window.readit) throw new Error('READIT preload API unavailable');
@@ -21,7 +26,14 @@ function api() {
 }
 
 function emptyItems(sections: SectionWire[]): ItemState {
-  return Object.fromEntries(sections.map((section) => [section.id, { loading: false, error: null, items: [] }]));
+  return Object.fromEntries(sections.map((section) => [section.id, { loading: false, error: null, warning: null, items: [] }]));
+}
+
+function refreshWarning(triggered: number, errors: number) {
+  if (errors === 0) return null;
+  const successful = Math.max(0, triggered - errors);
+  if (successful === 0) return `Refresh failed for all ${errors} source(s). Existing articles remain available; open feed status for details.`;
+  return `Refresh completed for ${successful} source(s); ${errors} failed. Successful sources and existing articles remain available.`;
 }
 
 function styleForLayout(mode: LayoutModeWire | undefined) {
@@ -53,7 +65,7 @@ async function readImageAsDataUrl(file: File): Promise<string> {
 export function AppShell() {
   const [sections, setSections] = React.useState<SectionWire[]>([]);
   const [items, setItems] = React.useState<ItemState>({});
-  const [layout, setLayoutState] = React.useState<LayoutWire>({ mode: 'stack', panels: [], appearance: {} });
+  const [layout, setLayoutState] = React.useState<LayoutWire>({ mode: 'stack', theme: DEFAULT_COLOR_SCHEME_ID, panels: [], appearance: {} });
   const [managerOpen, setManagerOpen] = React.useState(false);
   const [selectedSectionId, setSelectedSectionId] = React.useState<number | null>(null);
   const [newSectionName, setNewSectionName] = React.useState('');
@@ -63,11 +75,13 @@ export function AppShell() {
   const [feedTest, setFeedTest] = React.useState<FeedTestState>({ url: '', status: 'idle', message: '' });
   const [globalBusy, setGlobalBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [notice, setNotice] = React.useState<string | null>(null);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [searchUnread, setSearchUnread] = React.useState(false);
   const [searchImportant, setSearchImportant] = React.useState(false);
   const [searchFeedId, setSearchFeedId] = React.useState('');
-  const [searchDays, setSearchDays] = React.useState('');
+  const [searchDays, setSearchDays] = React.useState<SearchDateMode>('');
+  const [searchCustomDate, setSearchCustomDate] = React.useState<Date | undefined>();
   const [searchResults, setSearchResults] = React.useState<ItemWire[]>([]);
   const [searching, setSearching] = React.useState(false);
   const [searchVisible, setSearchVisible] = React.useState(false);
@@ -79,6 +93,12 @@ export function AppShell() {
   const selectedSection = sections.find((section) => section.id === selectedSectionId) || sections[0];
   const orderedSections = React.useMemo(() => orderedSectionsForLayout(sections, layout), [sections, layout]);
   const appearance = selectedAppearance(layout, selectedSection);
+  const colorScheme = getColorScheme(layout.theme);
+  const searchFeeds = React.useMemo(
+    () => sections.flatMap((section) => section.feeds)
+      .filter((feed, index, all) => all.findIndex((row) => row.id === feed.id) === index),
+    [sections]
+  );
 
   async function refreshSections(nextSelectedId?: number) {
     const response = await api().listSections();
@@ -97,17 +117,18 @@ export function AppShell() {
       setSelectedSectionId(null);
       setRenameValue('');
     }
+    return response.sections;
   }
 
   async function loadItems(sectionId: number) {
-    setItems((current) => ({ ...current, [sectionId]: { ...(current[sectionId] || { items: [] }), loading: true, error: null } }));
+    setItems((current) => ({ ...current, [sectionId]: { ...(current[sectionId] || { items: [], warning: null }), loading: true, error: null } }));
     try {
       const response = await api().queryItems({ sectionId, limit: 100 });
-      setItems((current) => ({ ...current, [sectionId]: { loading: false, error: null, items: response.items } }));
+      setItems((current) => ({ ...current, [sectionId]: { loading: false, error: null, warning: current[sectionId]?.warning || null, items: response.items } }));
     } catch (err) {
       setItems((current) => ({
         ...current,
-        [sectionId]: { ...(current[sectionId] || { items: [] }), loading: false, error: err instanceof Error ? err.message : String(err) },
+        [sectionId]: { ...(current[sectionId] || { items: [], warning: null }), loading: false, error: err instanceof Error ? err.message : String(err) },
       }));
     }
   }
@@ -135,6 +156,10 @@ export function AppShell() {
       setError(err instanceof Error ? err.message : String(err));
     }
   }
+
+  React.useLayoutEffect(() => {
+    applyColorScheme(document.documentElement, layout.theme);
+  }, [layout.theme]);
 
   React.useEffect(() => {
     void initialLoad();
@@ -250,31 +275,51 @@ export function AppShell() {
   }
 
   async function refreshSection(sectionId: number) {
-    setItems((current) => ({ ...current, [sectionId]: { ...(current[sectionId] || { items: [] }), loading: true, error: null } }));
-    const response = await api().syncTrigger({ sectionId });
-    await refreshSections(sectionId);
-    await loadItems(sectionId);
-    if (response.errors > 0) {
+    setItems((current) => ({
+      ...current,
+      [sectionId]: { ...(current[sectionId] || { items: [] }), loading: true, error: null, warning: null },
+    }));
+    try {
+      const response = await api().syncTrigger({ sectionId });
+      await refreshSections(sectionId);
+      await loadItems(sectionId);
       setItems((current) => ({
         ...current,
-        [sectionId]: { ...(current[sectionId] || { items: [] }), loading: false, error: `${response.errors} feed refresh error(s)` },
+        [sectionId]: {
+          ...(current[sectionId] || { items: [] }),
+          loading: false,
+          error: null,
+          warning: refreshWarning(response.triggered, response.errors),
+        },
+      }));
+    } catch (err) {
+      setItems((current) => ({
+        ...current,
+        [sectionId]: {
+          ...(current[sectionId] || { items: [] }),
+          loading: false,
+          error: null,
+          warning: `Refresh could not complete: ${err instanceof Error ? err.message : String(err)}`,
+        },
       }));
     }
   }
 
   async function refreshAll() {
     setGlobalBusy(true);
+    setError(null);
+    setNotice(null);
     try {
       const response = await api().syncTrigger({});
-      await refreshSections(selectedSection?.id);
-      await loadAllItems();
-      if (response.errors > 0) setError(`${response.errors} feed refresh error(s). Open feed status for details.`);
-      else setError(null);
+      const nextSections = await refreshSections(selectedSection?.id);
+      await loadAllItems(nextSections);
+      setNotice(refreshWarning(response.triggered, response.errors));
+    } catch (err) {
+      setError(`Refresh could not complete: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setGlobalBusy(false);
     }
   }
-
   async function markSectionSeen(sectionId: number) {
     await api().markSectionSeen({ sectionId });
     await loadItems(sectionId);
@@ -298,18 +343,23 @@ export function AppShell() {
     setItems((current) => ({
       ...current,
       [sectionId]: {
-        ...(current[sectionId] || { loading: false, error: null, items: [] }),
+        ...(current[sectionId] || { loading: false, error: null, warning: null, items: [] }),
         items: (current[sectionId]?.items || []).map((row) => row.id === item.id ? { ...row, is_important: response.is_important } : row),
       },
     }));
   }
 
   async function runSearch() {
+    if (searchDays === 'custom' && !searchCustomDate) {
+      setError('Select an exact date before running a custom-date search.');
+      return;
+    }
     setSearching(true);
+    setError(null);
     try {
-      const publishedAfter = searchDays
-        ? new Date(Date.now() - Number(searchDays) * 86_400_000).toISOString()
-        : undefined;
+      const dateRange = searchDays === 'custom' && searchCustomDate
+        ? exactLocalDayRange(searchCustomDate)
+        : relativeDateRange(searchDays);
       const response = await api().queryItems({
         sectionId: -1,
         limit: 200,
@@ -318,7 +368,7 @@ export function AppShell() {
         feedId: searchFeedId ? Number(searchFeedId) : undefined,
         unreadOnly: searchUnread || undefined,
         importantOnly: searchImportant || undefined,
-        publishedAfter,
+        ...dateRange,
       });
       setSearchResults(response.items);
       setSearchVisible(true);
@@ -335,8 +385,14 @@ export function AppShell() {
     setSearchImportant(false);
     setSearchFeedId('');
     setSearchDays('');
+    setSearchCustomDate(undefined);
     setSearchResults([]);
     setSearchVisible(false);
+  }
+
+  function selectCustomSearchDate(date?: Date) {
+    setSearchCustomDate(date);
+    if (date) console.info('search_custom_date_selected', date.toISOString());
   }
 
   async function toggleMute(feed: FeedWire) {
@@ -380,6 +436,17 @@ export function AppShell() {
     const response = await api().exportDiagnostics();
     setDataMessage(`Diagnostics exported to ${response.filePath}`);
   }
+  async function updateColorScheme(theme: ColorSchemeId) {
+    const previousTheme = layout.theme;
+    applyColorScheme(document.documentElement, theme);
+    try {
+      await persistLayout({ ...layout, theme });
+    } catch (err) {
+      applyColorScheme(document.documentElement, previousTheme);
+      throw err;
+    }
+  }
+
   async function updateAppearance(next: SectionAppearanceWire) {
     if (!selectedSection) return;
     await persistLayout({
@@ -389,7 +456,7 @@ export function AppShell() {
   }
 
   async function resetLayout() {
-    await persistLayout(resetLayoutForSections(sections, layout.mode || 'stack', layout.appearance));
+    await persistLayout(resetLayoutForSections(sections, colorScheme.id));
   }
 
   async function moveLayoutPanel(sectionKey: string, direction: -1 | 1) {
@@ -427,19 +494,31 @@ export function AppShell() {
   return (
     <div className="app-shell">
       <a className="skip-link" href="#workspace">Skip to sections</a>
-      <Toolbar busy={globalBusy} onRefreshAll={() => void refreshAll()} onOpenManager={() => setManagerOpen((open) => !open)} />
+      <Toolbar
+        busy={globalBusy}
+        search={{
+          query: searchQuery,
+          unread: searchUnread,
+          important: searchImportant,
+          feedId: searchFeedId,
+          dateMode: searchDays,
+          customDate: searchCustomDate,
+          feeds: searchFeeds,
+          searching,
+          onQueryChange: setSearchQuery,
+          onUnreadChange: setSearchUnread,
+          onImportantChange: setSearchImportant,
+          onFeedChange: setSearchFeedId,
+          onDateModeChange: setSearchDays,
+          onCustomDateChange: selectCustomSearchDate,
+          onSearch: () => void runSearch(),
+          onClear: clearSearch,
+        }}
+        onRefreshAll={() => void refreshAll()}
+        onOpenManager={() => setManagerOpen((open) => !open)}
+      />
       {error ? <div className="app-error" role="alert">{error}</div> : null}
-
-      <section className="search-toolbar" aria-label="Search local articles">
-        <label className="search-field"><span>Search</span><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void runSearch(); }} placeholder="Title, summary, or source" /></label>
-        <label><span>Source</span><select value={searchFeedId} onChange={(event) => setSearchFeedId(event.target.value)}><option value="">All feeds</option>{sections.flatMap((section) => section.feeds).filter((feed, index, all) => all.findIndex((row) => row.id === feed.id) === index).map((feed) => <option key={feed.id} value={feed.id}>{feed.title || feed.url}</option>)}</select></label>
-        <label><span>Date</span><select value={searchDays} onChange={(event) => setSearchDays(event.target.value)}><option value="">Any time</option><option value="1">Past day</option><option value="7">Past week</option><option value="30">Past month</option></select></label>
-        <label className="check-field"><input type="checkbox" checked={searchUnread} onChange={(event) => setSearchUnread(event.target.checked)} /> Unread</label>
-        <label className="check-field"><input type="checkbox" checked={searchImportant} onChange={(event) => setSearchImportant(event.target.checked)} /> Important</label>
-        <button type="button" className="primary" onClick={() => void runSearch()} disabled={searching}>{searching ? 'Searching...' : 'Search'}</button>
-        <button type="button" onClick={clearSearch}>Clear</button>
-      </section>
-
+      {notice ? <div className="app-notice" role="status">{notice}</div> : null}
       {searchVisible ? <section className="search-results" aria-label="Search results"><header><h2>Local results</h2><span>{searchResults.length} item(s)</span><button type="button" onClick={() => setSearchVisible(false)}>Close</button></header><div className="search-results-scroll"><ItemList sectionId={-1} items={searchResults} openExternalItem={(sectionId, item) => void openItem(sectionId, item)} onToggleImportant={(sectionId, item) => void toggleImportant(sectionId, item)} /></div></section> : null}
 
       <main className="workspace" id="workspace" tabIndex={-1}>
@@ -499,6 +578,23 @@ export function AppShell() {
 
             <div className="manager-block">
               <h2>Appearance</h2>
+              <label className="theme-picker">
+                <span>App colour scheme</span>
+                <select
+                  aria-label="App colour scheme"
+                  value={colorScheme.id}
+                  onChange={(event) => {
+                    const theme = event.currentTarget.value as ColorSchemeId;
+                    void updateColorScheme(theme).catch((err) => setError(err instanceof Error ? err.message : String(err)));
+                  }}
+                >
+                  {COLOR_SCHEMES.map((scheme) => <option key={scheme.id} value={scheme.id}>{scheme.label}</option>)}
+                </select>
+              </label>
+              <div className="theme-swatches" aria-hidden="true">
+                {colorScheme.colors.map((color, index) => <span key={index} style={{ backgroundColor: color }} />)}
+                <span style={{ backgroundColor: colorScheme.margin }} />
+              </div>
               <div className="segmented">
                 {(['solid', 'gradient', 'image'] as SectionAppearanceWire['mode'][]).map((mode) => (
                   <button key={mode} type="button" className={appearance.mode === mode ? 'selected' : ''} onClick={() => void updateAppearance({ ...appearance, mode })}>{mode}</button>
@@ -534,7 +630,7 @@ export function AppShell() {
           {sections.length === 0 ? (
             <div className="empty-app">No sections exist yet. Open Manage and create your first section.</div>
           ) : orderedSections.map((section, index) => {
-            const state = items[section.id] || { loading: false, error: null, items: [] };
+            const state = items[section.id] || { loading: false, error: null, warning: null, items: [] };
             const width = panelWidth(layout, section.key);
             return (
               <div
@@ -547,16 +643,19 @@ export function AppShell() {
                 style={{ '--panel-width': `${width}%`, order: index } as React.CSSProperties}
                 data-panel-id={section.key}
               >
-                <div className="panel-controls" aria-label={`${section.name} panel controls`}>
-                  <button type="button" onClick={() => void moveLayoutPanel(section.key, -1)} disabled={index === 0}>Move left</button>
-                  <button type="button" onClick={() => void moveLayoutPanel(section.key, 1)} disabled={index === orderedSections.length - 1}>Move right</button>
-                  <span>{width}%</span>
-                </div>
+                {PANEL_CONTROLS_ENABLED ? (
+                  <div className="panel-controls" aria-label={`${section.name} panel controls`}>
+                    <button type="button" onClick={() => void moveLayoutPanel(section.key, -1)} disabled={index === 0}>Move left</button>
+                    <button type="button" onClick={() => void moveLayoutPanel(section.key, 1)} disabled={index === orderedSections.length - 1}>Move right</button>
+                    <span>{width}%</span>
+                  </div>
+                ) : null}
                 <SectionPanel
                   section={section}
                   items={state.items}
                   loading={state.loading}
                   error={state.error}
+                  warning={state.warning}
                   progress={syncProgress[section.id] ?? globalProgress}
                   appearance={layout.appearance?.[section.key]}
                   onRefresh={(sectionId) => void refreshSection(sectionId)}

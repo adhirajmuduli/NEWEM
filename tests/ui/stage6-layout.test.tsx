@@ -73,6 +73,15 @@ async function click(text: string) {
   await act(async () => button!.click());
   await flush();
 }
+async function selectOption(label: string, value: string) {
+  const select = document.querySelector(`select[aria-label="${label}"]`) as HTMLSelectElement | null;
+  expect(select).toBeTruthy();
+  await act(async () => {
+    select!.value = value;
+    select!.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await flush();
+}
 
 describe('Stage 6 renderer layout controls', () => {
   let root: Root;
@@ -80,7 +89,7 @@ describe('Stage 6 renderer layout controls', () => {
 
   beforeEach(async () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1000 });
-    api = makeApi({ mode: 'columns', panels: [{ id: 'tech', x: 0, y: 0, w: 50, h: 1 }, { id: 'world', x: 1, y: 0, w: 50, h: 1 }], appearance: {} });
+    api = makeApi({ mode: 'columns', panels: [{ id: 'tech', x: 0, y: 0, w: 50, h: 1 }, { id: 'world', x: 1, y: 0, w: 50, h: 1 }], appearance: { tech: { mode: 'image', imageDataUrl: 'data:image/png;base64,AA==' } } });
     root = await renderApp(api);
   });
 
@@ -115,20 +124,49 @@ describe('Stage 6 renderer layout controls', () => {
     expect(api.setLayout).toHaveBeenCalledWith(expect.objectContaining({ layout: expect.objectContaining({ panels: expect.arrayContaining([expect.objectContaining({ id: 'tech', w: 70 })]) }) }));
   });
 
-  it('reorders panels and resets layout from the management controls', async () => {
-    await click('Move right');
-    expect(api.setLayout).toHaveBeenCalledWith(expect.objectContaining({ layout: expect.objectContaining({ panels: [expect.objectContaining({ id: 'world' }), expect.objectContaining({ id: 'tech' })] }) }));
+  it('hides panel controls and resets mode, dimensions, order, and section appearance', async () => {
+    expect(Array.from(document.querySelectorAll('button')).some((button) => button.textContent === 'Move right')).toBe(false);
+    const techSection = document.querySelector('[data-section-key="tech"]') as HTMLElement;
+    expect(techSection.style.backgroundImage).toContain('data:image/png');
 
     await click('Manage');
     await click('Reset layout');
-    expect(api.setLayout).toHaveBeenLastCalledWith(expect.objectContaining({ layout: expect.objectContaining({ panels: [expect.objectContaining({ id: 'tech', w: 100 }), expect.objectContaining({ id: 'world', w: 100 })] }) }));
-  });
 
+    expect(api.setLayout).toHaveBeenLastCalledWith(expect.objectContaining({
+      layout: expect.objectContaining({
+        mode: 'stack',
+        appearance: {},
+        panels: [
+          expect.objectContaining({ id: 'tech', w: 100 }),
+          expect.objectContaining({ id: 'world', w: 100 }),
+        ],
+      }),
+    }));
+    expect(techSection.style.backgroundImage).toBe('');
+  });
   it('keeps the small viewport fallback usable without horizontal panel overflow', async () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 520 });
     const css = fs.readFileSync(path.resolve(process.cwd(), 'app', 'renderer', 'styles', 'app.css'), 'utf8');
     expect(css).toContain('@media (max-width: 860px)');
     expect(css).toContain('flex-basis: 100% !important');
     expect(css).toContain('.resize-handle { display: none; }');
+  });
+
+  it('applies and persists a color scheme without refreshing application data', async () => {
+    await click('Manage');
+    const listCalls = vi.mocked(api.listSections).mock.calls.length;
+    const queryCalls = vi.mocked(api.queryItems).mock.calls.length;
+
+    await selectOption('App colour scheme', 'warm');
+
+    expect(document.documentElement.dataset.colorScheme).toBe('warm');
+    expect(document.documentElement.style.getPropertyValue('--manager-bg')).toBe('#e0d5b0');
+    expect(api.setLayout).toHaveBeenCalledTimes(1);
+    expect(api.setLayout).toHaveBeenCalledWith(expect.objectContaining({
+      layout: expect.objectContaining({ theme: 'warm' }),
+    }));
+    expect(vi.mocked(api.listSections).mock.calls).toHaveLength(listCalls);
+    expect(vi.mocked(api.queryItems).mock.calls).toHaveLength(queryCalls);
+    expect(api.syncTrigger).not.toHaveBeenCalled();
   });
 });

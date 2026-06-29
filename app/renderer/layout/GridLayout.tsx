@@ -1,3 +1,5 @@
+import { DEFAULT_COLOR_SCHEME_ID, getColorScheme } from '../../shared/colorSchemes';
+import type { ColorSchemeId } from '../../shared/colorSchemes';
 import type { LayoutModeWire, LayoutWire, SectionWire } from '../../shared/ipcTypes';
 
 export const MIN_PANEL_WIDTH = 32;
@@ -13,15 +15,17 @@ export function defaultPanelsForSections(sections: SectionWire[]) {
   return sections.map((section, index) => ({ id: section.key, x: index, y: 0, w: 100, h: 1 }));
 }
 
-export function resetLayoutForSections(sections: SectionWire[], mode: LayoutModeWire = DEFAULT_LAYOUT_MODE, appearance: LayoutWire['appearance'] = {}): LayoutWire {
-  const sectionKeys = new Set(sections.map((section) => section.key));
+export function resetLayoutForSections(
+  sections: SectionWire[],
+  theme: ColorSchemeId = DEFAULT_COLOR_SCHEME_ID
+): LayoutWire {
   return {
-    mode,
+    mode: DEFAULT_LAYOUT_MODE,
+    theme,
     panels: defaultPanelsForSections(sections),
-    appearance: Object.fromEntries(Object.entries(appearance).filter(([key]) => sectionKeys.has(key))),
+    appearance: {},
   };
 }
-
 export function normalizeLayoutForSections(layout: LayoutWire | undefined, sections: SectionWire[]): LayoutWire {
   const sectionKeys = new Set(sections.map((section) => section.key));
   const mode = layout?.mode || DEFAULT_LAYOUT_MODE;
@@ -39,6 +43,7 @@ export function normalizeLayoutForSections(layout: LayoutWire | undefined, secti
 
   return {
     mode,
+    theme: getColorScheme(layout?.theme).id,
     panels: panels.map((panel, index) => ({ ...panel, x: index })),
     appearance: Object.fromEntries(Object.entries(layout?.appearance || {}).filter(([key]) => sectionKeys.has(key))),
   };

@@ -34,13 +34,14 @@ describe('validated IPC handlers', () => {
     await expect(handlers.get('portability:importOpml')!(null, { opml: '<opml />', injected: true })).rejects.toThrow(/not allowed/);
     await expect(handlers.get('items:query')!(null, { sectionId: -1, query: 'x'.repeat(201) })).rejects.toThrow(/too long/);
     await expect(handlers.get('layout:set')!(null, { layout: { panels: [{ id: 'x', x: 0, y: 0, w: 0, h: 1 }] } })).rejects.toThrow(/must be >= 1/);
+    await expect(handlers.get('layout:set')!(null, { layout: { theme: 'untrusted', panels: [] } })).rejects.toThrow(/theme is invalid/);
   });
 
   it('accepts valid section and layout requests', async () => {
     const handlers = setupHandlers();
     const created = await handlers.get('sections:create')!(null, { name: 'Security', key: 'security' }) as any;
     expect(created.changed).toBe(1);
-    const layout = await handlers.get('layout:set')!(null, { layout: { panels: [{ id: 'security', x: 0, y: 0, w: 3, h: 2 }] } }) as any;
-    expect(layout.layout.panels[0]).toMatchObject({ id: 'security', w: 3 });
+    const layout = await handlers.get('layout:set')!(null, { layout: { theme: 'night', panels: [{ id: 'security', x: 0, y: 0, w: 3, h: 2 }] } }) as any;
+    expect(layout.layout).toMatchObject({ theme: 'night', panels: [{ id: 'security', w: 3 }] });
   });
 });

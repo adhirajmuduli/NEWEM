@@ -40,6 +40,10 @@ export type FetchFeedOptions = {
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_REDIRECTS = 5;
 const DEFAULT_MAX_BYTES = 2 * 1024 * 1024;
+const DEFAULT_REQUEST_HEADERS = {
+  Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, text/html;q=0.5, */*;q=0.1',
+  'User-Agent': 'READIT/0.1 (local RSS reader)',
+};
 
 function timeoutError(): DOMException | Error {
   try {
@@ -105,9 +109,13 @@ export async function fetchFeed(url: string, opts?: FetchFeedOptions): Promise<F
   const timeoutMs = opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxRedirects = opts?.maxRedirects ?? DEFAULT_MAX_REDIRECTS;
   const maxBytes = opts?.maxBytes ?? DEFAULT_MAX_BYTES;
-  const headers = buildConditionalHeaders({ etag: opts?.etag, last_modified: opts?.lastModified });
+  const headers = {
+    ...DEFAULT_REQUEST_HEADERS,
+    ...buildConditionalHeaders({ etag: opts?.etag, last_modified: opts?.lastModified }),
+  };
 
   let currentUrl = normalized.url;
+  const visited = new Set([currentUrl]);
   try {
     for (let redirects = 0; redirects <= maxRedirects; redirects += 1) {
       const res = await fetchWithTimeout(currentUrl, { headers, redirect: 'manual' }, timeoutMs);
@@ -134,11 +142,20 @@ export async function fetchFeed(url: string, opts?: FetchFeedOptions): Promise<F
             error: { code: 'too_many_redirects', message: 'Feed redirect limit exceeded or redirect was invalid' },
           };
         }
-        const nextUrl = normalizeFeedUrl(next);
+        const nextUrl = normalizeFeedUrl(next, { preserveTrailingSlash: true });
         if (!nextUrl.ok) {
           return { status: 'error', url: next, httpStatus, error: { code: nextUrl.code, message: nextUrl.message } };
         }
+        if (visited.has(nextUrl.url)) {
+          return {
+            status: 'error',
+            url: currentUrl,
+            httpStatus,
+            error: { code: 'too_many_redirects', message: 'Feed redirect loop detected' },
+          };
+        }
         currentUrl = nextUrl.url;
+        visited.add(currentUrl);
         continue;
       }
 
