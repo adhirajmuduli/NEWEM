@@ -1,56 +1,65 @@
 import { getDb } from '../core/storage/db';
-import { listFeeds, type Feed } from '../core/storage/dao/feedsDao';
+import { listFeeds, type Feed, tryLockFeed, markFeedError } from '../core/storage/dao/feedsDao';
 import { syncFeedByUrl, type SyncResult } from '../core/rss/sync';
 import { withModule } from './logging';
-import { tryLockFeed, markFeedFetched, markFeedError } from '../core/storage/dao/feedsDao';
 
 type SchedulerState = 'stopped' | 'running';
 
 const log = withModule('scheduler');
-
-// Policy
 const DEFAULT_INTERVAL_MINUTES = 30;
 const MIN_INTERVAL_MINUTES = 10;
-const TICK_MS = 60_000; // single global tick
+const TICK_MS = 60_000;
+const STARTUP_DELAY_MS = 5_000;
+export const MAX_SCHEDULER_CONCURRENCY = 4;
 
-function minutesToMs(m: number) {
-  return m * 60 * 1000;
+function minutesToMs(minutes: number) {
+  return minutes * 60 * 1000;
 }
 
-function parseIsoOrNull(s?: string | null): number | null {
-  if (!s) return null;
-  const t = Date.parse(s);
-  return Number.isNaN(t) ? null : t;
+function nextDueAt(feed: Feed) {
+  if (!feed.last_fetched_at) return 0;
+  const last = Date.parse(feed.last_fetched_at);
+  if (Number.isNaN(last)) return 0;
+  return last + minutesToMs(Math.max(MIN_INTERVAL_MINUTES, feed.fetch_interval_minutes ?? DEFAULT_INTERVAL_MINUTES));
 }
 
-function nextDueAt(feed: Feed): number {
-  const last = parseIsoOrNull(feed.last_fetched_at ?? null);
-  const raw = feed.fetch_interval_minutes ?? DEFAULT_INTERVAL_MINUTES;
-  const interval = Math.max(MIN_INTERVAL_MINUTES, raw);
-  if (!last) return 0; // due immediately if never fetched
-  return last + minutesToMs(interval);
+export async function runWithConcurrency<T>(
+  values: T[],
+  limit: number,
+  worker: (value: T) => Promise<void>
+) {
+  const queue = [...values];
+  const workerCount = Math.min(Math.max(1, limit), queue.length);
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (queue.length > 0) {
+      const value = queue.shift();
+      if (value !== undefined) await worker(value);
+    }
+  }));
 }
 
 export class Scheduler {
   private state: SchedulerState = 'stopped';
   private timer: NodeJS.Timeout | null = null;
+  private startupTimer: NodeJS.Timeout | null = null;
+  private tickInProgress = false;
   private inFlight = new Set<number>();
 
-  // Start once at app bootstrap; continues on a single global timer
   start() {
     if (this.state === 'running') return;
     this.state = 'running';
-    log.info('start');
-    this.timer = setInterval(() => void this.tick(), TICK_MS);
-    void this.tick(); // run immediately
+    log.info('start', { startupDelayMs: STARTUP_DELAY_MS, concurrency: MAX_SCHEDULER_CONCURRENCY });
+    this.startupTimer = setTimeout(() => void this.runTickSafely(), STARTUP_DELAY_MS);
+    this.timer = setInterval(() => void this.runTickSafely(), TICK_MS);
   }
 
-  // Stop on app quit
   stop() {
     if (this.state === 'stopped') return;
     this.state = 'stopped';
     if (this.timer) clearInterval(this.timer);
+    if (this.startupTimer) clearTimeout(this.startupTimer);
     this.timer = null;
+    this.startupTimer = null;
     log.info('stop');
   }
 
@@ -58,86 +67,75 @@ export class Scheduler {
     return this.state === 'running';
   }
 
-  private async tick() {
-    if (this.state !== 'running') return;
-
-    const db = getDb();
-    const feeds = listFeeds(db, { limit: 1000, offset: 0 }).filter((f) => f.is_enabled === 1);
-
-    const now = Date.now();
-    for (const feed of feeds) {
-      const dueAt = nextDueAt(feed);
-      if (dueAt > now) continue;
-
-      if (!tryLockFeed(db, feed.id)) continue;
-
-      this.inFlight.add(feed.id);
-      void this.fetchOne(feed).finally(() => this.inFlight.delete(feed.id));
+  private async runTickSafely() {
+    if (this.state !== 'running' || this.tickInProgress) return;
+    this.tickInProgress = true;
+    try {
+      await this.tick();
+    } catch (error) {
+      log.error('tick_failed', { error: error instanceof Error ? error.message : String(error) });
+    } finally {
+      this.tickInProgress = false;
     }
   }
 
-  // Robust per-feed fetch; never throws
-  private async fetchOne(feed: Feed): Promise<SyncResult> {
+  private async tick() {
     const db = getDb();
-    const started = Date.now();
+    const now = Date.now();
+    const dueFeeds = listFeeds(db, { limit: 1000, offset: 0 }).filter((feed) =>
+      feed.is_enabled === 1 &&
+      feed.is_muted !== 1 &&
+      !this.inFlight.has(feed.id) &&
+      nextDueAt(feed) <= now
+    );
 
-    try {
-      const res = await syncFeedByUrl(db, feed.url);
-      log.info('sync_complete', { feedId: feed.id, status: res.status, newItems: res.newItems });
-
-      // Warn if feed is not mapped to any section (does not block ingestion)
+    await runWithConcurrency(dueFeeds, MAX_SCHEDULER_CONCURRENCY, async (feed) => {
+      if (this.state !== 'running' || !tryLockFeed(db, feed.id)) return;
+      this.inFlight.add(feed.id);
       try {
-        const mapped = !!db.prepare(`SELECT 1 FROM feed_sections WHERE feed_id=? LIMIT 1`).get(feed.id);
-        if (!mapped) {
-          log.warn('unmapped_feed', { feedId: feed.id, url: feed.url });
-        }
-      } catch (e) {
-        // If mapping table not present or query fails, warn and continue
-        log.warn('mapping_check_failed', { feedId: feed.id, error: e instanceof Error ? e.message : String(e) });
+        await this.fetchOne(feed);
+      } finally {
+        this.inFlight.delete(feed.id);
       }
+    });
+  }
 
-      return res;
-    } catch (e) {
-      const errMsg = e instanceof Error ? e.message : String(e);
-      log.error('sync_exception', { feedId: feed.id, error: errMsg });
-
-      // Ensure failure is recorded and last_error updated even if sync threw before logging
+  private async fetchOne(feed: Feed): Promise<SyncResult> {
+    try {
+      const result = await syncFeedByUrl(getDb(), feed.url);
+      log.info('sync_complete', { feedId: feed.id, status: result.status, newItems: result.newItems });
+      const mapped = !!getDb().prepare('SELECT 1 FROM feed_sections WHERE feed_id=? LIMIT 1').get(feed.id);
+      if (!mapped) log.warn('unmapped_feed', { feedId: feed.id, url: feed.url });
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      log.error('sync_exception', { feedId: feed.id, error: message });
       try {
-        const duration = Date.now() - started;
-        db.prepare(
-          `INSERT INTO fetch_log (feed_id, status, http_status, fetched_at, duration_ms, message)
-           VALUES (@feed_id, 'error', NULL, strftime('%Y-%m-%dT%H:%M:%fZ','now'), @duration_ms, @message)`
-        ).run({ feed_id: feed.id, duration_ms: duration, message: errMsg });
-
-        db.prepare(
-          `UPDATE feeds
-             SET last_fetched_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),
-                 last_error=@err
-           WHERE id=@id`
-        ).run({ id: feed.id, err: errMsg });
-      } catch (logErr) {
-        // Swallow to avoid cascading failures
+        markFeedError(getDb(), feed.id, message);
+      } catch (writeError) {
         log.warn('post_error_logging_failed', {
           feedId: feed.id,
-          error: logErr instanceof Error ? logErr.message : String(logErr),
+          error: writeError instanceof Error ? writeError.message : String(writeError),
         });
       }
-
-      markFeedError(db, feed.id, errMsg);
-      return { status: 'error', newItems: 0 };
-
+      return {
+        status: 'error',
+        feedId: feed.id,
+        url: feed.url,
+        normalizedUrl: feed.url,
+        newItems: 0,
+        error: { code: 'network_error', message },
+      };
     }
   }
 }
 
 export const scheduler = new Scheduler();
 
-// Public API (for bootstrap). Existing imports of `scheduler` can remain.
 export function startScheduler() {
   scheduler.start();
 }
+
 export function stopScheduler() {
   scheduler.stop();
 }
-
-export {};

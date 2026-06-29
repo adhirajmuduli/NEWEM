@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { assertValidFeedUrl } from '../../rss/url';
 
 export interface Feed {
   id: number;
@@ -11,23 +12,23 @@ export interface Feed {
   fetch_interval_minutes?: number | null;
   last_error?: string | null;
   is_enabled: number;
+  is_muted: number;
+  is_fetching?: number;
   created_at: string;
   updated_at: string;
 }
 
 export function createFeed(db: Database.Database, url: string) {
+  const normalizedUrl = assertValidFeedUrl(url);
   const stmt = db.prepare(
     `INSERT INTO feeds(url) VALUES (?)
-     ON CONFLICT(url) DO UPDATE SET url=excluded.url
+     ON CONFLICT(url) DO UPDATE SET url=excluded.url, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
      RETURNING *`
   );
-  return stmt.get(url) as Feed;
+  return stmt.get(normalizedUrl) as Feed;
 }
 
-export function isFeedDue(feed: {
-  last_fetched_at?: string | null;
-  fetch_interval_minutes?: number | null;
-}) {
+export function isFeedDue(feed: { last_fetched_at?: string | null; fetch_interval_minutes?: number | null }) {
   if (!feed.last_fetched_at) return true;
   if (!feed.fetch_interval_minutes) return true;
 
@@ -37,41 +38,43 @@ export function isFeedDue(feed: {
 }
 
 export function tryLockFeed(db: Database.Database, feedId: number): boolean {
-  const r = db.prepare(`
-    UPDATE feeds
-    SET is_fetching = 1
-    WHERE id = ? AND is_fetching = 0
-  `).run(feedId);
+  const r = db.prepare(
+    `UPDATE feeds
+     SET is_fetching = 1, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+     WHERE id = ? AND COALESCE(is_fetching, 0) = 0`
+  ).run(feedId);
 
   return r.changes === 1;
 }
 
 export function markFeedFetched(db: Database.Database, feedId: number) {
-  db.prepare(`
-    UPDATE feeds
-    SET
-      is_fetching = 0,
-      last_fetched_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
-      fetch_error = NULL
-    WHERE id = ?
-  `).run(feedId);
+  db.prepare(
+    `UPDATE feeds
+     SET is_fetching = 0,
+         last_fetched_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+         last_error = NULL,
+         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+     WHERE id = ?`
+  ).run(feedId);
 }
 
 export function markFeedError(db: Database.Database, feedId: number, message: string) {
-  db.prepare(`
-    UPDATE feeds
-    SET
-      is_fetching = 0,
-      fetch_error = ?
-    WHERE id = ?
-  `).run(message, feedId);
+  db.prepare(
+    `UPDATE feeds
+     SET is_fetching = 0,
+         last_fetched_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+         last_error = ?,
+         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+     WHERE id = ?`
+  ).run(message, feedId);
 }
 
 export function bulkAddFeeds(db: Database.Database, urlsText: string) {
   const urls = urlsText
     .split(/\r?\n/)
     .map((u) => u.trim())
-    .filter((u) => u.length > 0);
+    .filter((u) => u.length > 0)
+    .map((u) => assertValidFeedUrl(u));
   const stmt = db.prepare(
     `INSERT INTO feeds(url) VALUES (?)
      ON CONFLICT(url) DO NOTHING`
@@ -96,23 +99,55 @@ export function getFeed(db: Database.Database, id: number) {
 }
 
 export function setEnabled(db: Database.Database, id: number, enabled: boolean) {
-  const stmt = db.prepare(`UPDATE feeds SET is_enabled=?, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?`);
+  const stmt = db.prepare(
+    `UPDATE feeds
+     SET is_enabled=?, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+     WHERE id=?`
+  );
   stmt.run(enabled ? 1 : 0, id);
 }
 
-export function updateMeta(db: Database.Database, id: number, meta: Partial<Pick<Feed, 'etag' | 'last_modified' | 'last_fetched_at' | 'last_error' | 'title' | 'site_url'>>) {
+
+export function updateFeedSettings(
+  db: Database.Database,
+  id: number,
+  updates: { enabled?: boolean; muted?: boolean; fetchIntervalMinutes?: number | null }
+) {
+  const current = getFeed(db, id);
+  if (!current) return undefined;
+  const enabled = updates.enabled === undefined ? current.is_enabled : updates.enabled ? 1 : 0;
+  const muted = updates.muted === undefined ? current.is_muted : updates.muted ? 1 : 0;
+  const interval = updates.fetchIntervalMinutes === undefined ? current.fetch_interval_minutes ?? null : updates.fetchIntervalMinutes;
+  return db.prepare(
+    `UPDATE feeds
+     SET is_enabled=@enabled,
+         is_muted=@muted,
+         fetch_interval_minutes=@interval,
+         updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+     WHERE id=@id
+     RETURNING *`
+  ).get({ id, enabled, muted, interval }) as Feed;
+}
+export function updateMeta(
+  db: Database.Database,
+  id: number,
+  meta: Partial<Pick<Feed, 'etag' | 'last_modified' | 'last_fetched_at' | 'last_error' | 'title' | 'site_url'>>
+) {
   const f = getFeed(db, id);
   if (!f) return;
   const newVals = {
-    etag: meta.etag ?? f.etag,
-    last_modified: meta.last_modified ?? f.last_modified,
-    last_fetched_at: meta.last_fetched_at ?? f.last_fetched_at,
+    etag: meta.etag ?? f.etag ?? null,
+    last_modified: meta.last_modified ?? f.last_modified ?? null,
+    last_fetched_at: meta.last_fetched_at ?? f.last_fetched_at ?? null,
     last_error: meta.last_error ?? null,
     title: meta.title ?? f.title ?? null,
     site_url: meta.site_url ?? f.site_url ?? null,
   };
   const stmt = db.prepare(
-    `UPDATE feeds SET etag=?, last_modified=?, last_fetched_at=?, last_error=?, title=?, site_url=?, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?`
+    `UPDATE feeds
+     SET etag=?, last_modified=?, last_fetched_at=?, last_error=?, title=?, site_url=?, is_fetching=0,
+         updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+     WHERE id=?`
   );
   stmt.run(
     newVals.etag,

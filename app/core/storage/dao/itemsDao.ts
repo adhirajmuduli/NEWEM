@@ -22,6 +22,9 @@ export interface ItemRow {
   created_at: string;
   feed_title?: string | null;
   site_url?: string | null;
+  is_read: 0 | 1;
+  is_important: 0 | 1;
+  read_at?: string | null;
 }
 
 export function insertItems(db: Database.Database, feedId: number, items: NewItem[]) {
@@ -51,12 +54,20 @@ export function insertItems(db: Database.Database, feedId: number, items: NewIte
 
 export function markSeen(db: Database.Database, itemIds: number[]) {
   const stmt = db.prepare(
-    `UPDATE items SET seen_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND seen_at IS NULL`
+    `INSERT INTO item_state(item_id, is_read, read_at)
+     VALUES (@itemId, 1, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+     ON CONFLICT(item_id) DO UPDATE SET
+       is_read=1,
+       read_at=CASE
+         WHEN item_state.is_read = 1 THEN item_state.read_at
+         ELSE strftime('%Y-%m-%dT%H:%M:%fZ','now')
+       END
+     WHERE item_state.is_read = 0`
   );
   const tx = db.transaction((ids: number[]) => {
     let changed = 0;
     for (const id of ids) {
-      const r = stmt.run(id);
+      const r = stmt.run({ itemId: id });
       changed += r.changes;
     }
     return changed;
@@ -65,31 +76,32 @@ export function markSeen(db: Database.Database, itemIds: number[]) {
 }
 
 export function markSectionSeen(db: Database.Database, sectionId: number) {
-  const r = db.prepare(
-    `UPDATE items SET seen_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
-     WHERE seen_at IS NULL AND feed_id IN (
-       SELECT fs.feed_id FROM feed_sections fs WHERE fs.section_id=?
-     )`
-  ).run(sectionId);
-  return r.changes;
+  const itemIds = db.prepare(
+    `SELECT i.id
+     FROM items i
+     LEFT JOIN item_state s ON s.item_id = i.id
+     WHERE COALESCE(s.is_read, 0) = 0
+       AND i.feed_id IN (SELECT fs.feed_id FROM feed_sections fs WHERE fs.section_id=?)`
+  ).all(sectionId) as Array<{ id: number }>;
+
+  return markSeen(db, itemIds.map((row) => row.id));
 }
-/**
- * Step 9: Mark a single item as read (idempotent).
- * Sets is_read=1 and read_at=now; preserves important flag.
- */
+
 export function markItemRead(db: Database.Database, itemId: number) {
   const r = db.prepare(
     `INSERT INTO item_state(item_id, is_read, read_at)
      VALUES (@itemId, 1, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
      ON CONFLICT(item_id) DO UPDATE SET
        is_read=1,
-       read_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')`
+       read_at=CASE
+         WHEN item_state.is_read = 1 THEN item_state.read_at
+         ELSE strftime('%Y-%m-%dT%H:%M:%fZ','now')
+       END
+     WHERE item_state.is_read = 0`
   ).run({ itemId });
   return r.changes;
 }
-/**
- * Step 9: Toggle item important flag. Returns the new is_important value (0|1).
- */
+
 export function toggleItemImportant(db: Database.Database, itemId: number): 0 | 1 {
   const row = db.prepare(`SELECT is_important FROM item_state WHERE item_id=?`).get(itemId) as
     | { is_important: number }
@@ -109,41 +121,45 @@ export function toggleItemImportant(db: Database.Database, itemId: number): 0 | 
 export function getItemsBySection(
   db: Database.Database,
   sectionId: number,
-  opts?: { includeSeen?: boolean; limit?: number; before?: string | null }
+  opts?: { includeSeen?: boolean; limit?: number; before?: string | null; query?: string; feedId?: number; importantOnly?: boolean; unreadOnly?: boolean; publishedAfter?: string | null; publishedBefore?: string | null }
 ) {
   const includeSeen = opts?.includeSeen ?? false;
   const limit = Math.max(1, Math.min(200, opts?.limit ?? 50));
-  const beforeClause = opts?.before ? 'AND i.published_at < @before' : '';
-
-  // Step 9 visibility semantics
-  const visibilityClause = includeSeen
-    ? ''
-    : `AND (
-         COALESCE(s.is_important, 0) = 1
-         OR (COALESCE(s.is_read, 0) = 0 AND i.seen_at IS NULL)
-       )`;
+  const clauses: string[] = [];
+  if (sectionId > 0) {
+    clauses.push(`i.feed_id IN (SELECT fs.feed_id FROM feed_sections fs WHERE fs.section_id=@sectionId)`);
+  }
+  if (!includeSeen) clauses.push(`(COALESCE(s.is_important, 0) = 1 OR COALESCE(s.is_read, 0) = 0)`);
+  if (opts?.unreadOnly) clauses.push(`COALESCE(s.is_read, 0) = 0`);
+  if (opts?.importantOnly) clauses.push(`COALESCE(s.is_important, 0) = 1`);
+  if (opts?.feedId) clauses.push(`i.feed_id = @feedId`);
+  if (opts?.before) clauses.push(`COALESCE(i.published_at, i.created_at) < @before`);
+  if (opts?.publishedAfter) clauses.push(`COALESCE(i.published_at, i.created_at) >= @publishedAfter`);
+  if (opts?.publishedBefore) clauses.push(`COALESCE(i.published_at, i.created_at) <= @publishedBefore`);
+  if (opts?.query?.trim()) clauses.push(`(LOWER(COALESCE(i.title, '')) LIKE @queryLike OR LOWER(COALESCE(i.description, '')) LIKE @queryLike OR LOWER(COALESCE(f.title, '')) LIKE @queryLike)`);
+  const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
 
   const stmt = db.prepare(
-    `SELECT i.*, f.title AS feed_title, f.site_url
+    `SELECT i.*, f.title AS feed_title, f.site_url,
+            COALESCE(s.is_read, 0) AS is_read,
+            COALESCE(s.is_important, 0) AS is_important,
+            s.read_at
      FROM items i
      JOIN feeds f ON f.id = i.feed_id
      LEFT JOIN item_state s ON s.item_id = i.id
-     WHERE i.feed_id IN (
-       SELECT fs.feed_id FROM feed_sections fs WHERE fs.section_id=@sectionId
-     )
-     ${visibilityClause}
-     ${beforeClause}
+     ${where}
      ORDER BY COALESCE(i.published_at, i.created_at) DESC
      LIMIT @limit`
   );
 
-  return stmt.all({
-    sectionId,
-    limit,
-    before: opts?.before ?? null,
-  }) as ItemRow[];
+  const parameters: Record<string, string | number> = { limit };
+  if (sectionId > 0) parameters.sectionId = sectionId;
+  if (opts?.before) parameters.before = opts.before;
+  if (opts?.feedId) parameters.feedId = opts.feedId;
+  if (opts?.publishedAfter) parameters.publishedAfter = opts.publishedAfter;
+  if (opts?.publishedBefore) parameters.publishedBefore = opts.publishedBefore;
+  if (opts?.query?.trim()) parameters.queryLike = `%${opts.query.trim().toLowerCase()}%`;
+  return stmt.all(parameters) as ItemRow[];
 }
-
-console.log("Database DAO initialized successfully!");
 
 export {};

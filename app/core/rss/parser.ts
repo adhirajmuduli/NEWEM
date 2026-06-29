@@ -1,4 +1,4 @@
-import { XMLParser } from 'fast-xml-parser';
+import { XMLParser, XMLValidator } from 'fast-xml-parser';
 
 export interface ParsedItem {
   guid?: string | null;
@@ -49,6 +49,10 @@ function pickRssLink(item: any): string | undefined {
 }
 
 export function parseFeed(xml: string): ParsedFeed {
+  const validation = XMLValidator.validate(xml);
+  if (validation !== true) {
+    throw new Error('Invalid XML feed');
+  }
   const doc = parser.parse(xml);
   // RSS 2.0
   if (doc?.rss?.channel) {
@@ -95,8 +99,7 @@ export function parseFeed(xml: string): ParsedFeed {
       .filter(Boolean) as ParsedItem[];
     return { feed: { title, site_url }, items };
   }
-  // Fallback: return no items
-  return { feed: { title: undefined, site_url: undefined }, items: [] };
+  throw new Error('Unsupported RSS/Atom feed format');
 }
 
 export {};

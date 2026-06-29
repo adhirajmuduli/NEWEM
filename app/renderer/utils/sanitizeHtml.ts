@@ -37,7 +37,7 @@
         el.remove();
       }
 
-      // Remove tracking 1×1 images
+      // Remove tracking 1--1 images
       for (const img of Array.from(body.querySelectorAll('img'))) {
         if (isOneByOneImage(img)) {
           img.remove();
@@ -93,3 +93,5 @@
 
   (window as any).READIT.Utils.sanitizeHtml = sanitizeHtml;
 })();
+
+export {};

@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "Node16",
+    "moduleResolution": "node16",
+    "lib": ["DOM", "ES2022"],
+    "types": ["node", "react", "react-dom"],
+    "jsx": "react-jsx",
+    "outDir": "./dist",
+    "rootDir": "."
+  },
+  "include": [
+    "app/main/**/*",
+    "app/preload/**/*",
+    "app/core/**/*",
+    "app/shared/**/*",
+    "app/config/**/*",
+    "scripts/**/*",
+    "globals.d.ts"
+  ],
+  "exclude": ["app/renderer/**/*", "dist", "node_modules"]
+}

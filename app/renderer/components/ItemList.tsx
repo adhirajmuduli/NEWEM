@@ -1,75 +1,84 @@
-(function attach() {
-  (window as any).READIT = (window as any).READIT || {};
-  (window as any).READIT.Components = (window as any).READIT.Components || {};
+import React from 'react';
+import type { ItemWire } from '../../shared/ipcTypes';
+import { BentoGrid } from './ui/bento-grid';
+import { DigitalButton } from './ui/digital-button';
+import { MagicCard } from './ui/magic-card';
 
-  function fmtTime(iso?: string | null): string {
-    if (!iso) return "";
-    try {
-      return new Date(iso).toLocaleString();
-    } catch {
-      return "";
+function fmtTime(iso?: string | null): string {
+  if (!iso) return 'No date';
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? 'No date' : date.toLocaleString();
+}
+
+function stripUnsafeHtml(html?: string | null) {
+  if (!html) return '';
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  doc.querySelectorAll('script, style, iframe, object, embed, link, meta').forEach((node) => node.remove());
+  doc.querySelectorAll('*').forEach((node) => {
+    for (const attr of Array.from(node.attributes)) {
+      const name = attr.name.toLowerCase();
+      const value = attr.value.trim().toLowerCase();
+      if (name.startsWith('on') || value.startsWith('javascript:')) node.removeAttribute(attr.name);
     }
+  });
+  return doc.body.textContent?.replace(/s+/g, ' ').trim() ?? '';
+}
+
+export function ItemList(props: {
+  sectionId: number;
+  items: ItemWire[];
+  openExternalItem(sectionId: number, item: ItemWire): void;
+  onToggleImportant(sectionId: number, item: ItemWire): void;
+}) {
+  if (props.items.length === 0) {
+    return <div className="state-card">No unread items. Refresh the section or add feeds to bring news here.</div>;
   }
 
-  function ItemList(props: { sectionId: number; items: READIT.ItemWire[] }): any {
-    const sanitize = (window as any).READIT?.Utils?.sanitizeHtml || ((s: string) => s);
-    const Store = (window as any).READIT?.Store;
-
-    return React.createElement(
-      "div",
-      { className: "item-list" },
-      (props.items || []).map((it) =>
-        React.createElement(
-          "div",
-          { key: it.id, className: "item-card" },
-          React.createElement(
-            "div",
-            { className: "item-row" },
-            React.createElement(
-                "div",
-                { className: "item-head" },
-                React.createElement(
-                "a",
-                {
-                    href: it.link ?? "#",
-                    target: "_blank",
-                    rel: "noreferrer noopener",
-                    onClick: () => Store && Store.markItemRead(props.sectionId, it.id),
-                },
-                it.title ?? "(untitled)"
-                ),
-                React.createElement(
-                    "button",
-                    {
-                        type: "button",
-                        className: it.is_important ? "star active" : "star",
-                        onClick: (e: any) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        Store && Store.toggleItemImportant(props.sectionId, it.id);
-                        },
-                        title: "Note later",
-                    },
-                    "★"
-                ),
-
-                React.createElement(
-                "span",
-                { className: "item-meta" },
-                `${it.feed_title ?? ""} · ${fmtTime(it.published_at)}`
-                )
-            )
-          ),
-          it.description
-            ? React.createElement("div", {
-                className: "item-desc",
-                dangerouslySetInnerHTML: { __html: sanitize(it.description) },
-              })
-            : null
-        )
-      )
-    );
-  }
-
-  (window as any).READIT.Components.ItemList = ItemList;
-})();
+  return (
+    <BentoGrid className="item-list" aria-label="News items">
+      {props.items.map((item, index) => (
+        <MagicCard
+          as="article"
+          key={item.id}
+          data-featured={index % 7 === 0 ? 'true' : undefined}
+          className={item.is_read ? 'item-card read' : 'item-card'}
+        >
+          <div className="item-topline">
+            <span>{item.feed_title || 'Unknown feed'}</span>
+            <span>{fmtTime(item.published_at)}</span>
+          </div>
+          <a
+            href={item.link || '#'}
+            className="item-title"
+            onClick={(e) => {
+              e.preventDefault();
+              props.openExternalItem(props.sectionId, item);
+            }}
+          >
+            {item.title || '(untitled)'}
+          </a>
+          {item.description ? <p className="item-desc">{stripUnsafeHtml(item.description)}</p> : null}
+          <div className="item-actions">
+            <DigitalButton
+              type="button"
+              effect="shiny"
+              className="item-action-button"
+              onClick={() => props.openExternalItem(props.sectionId, item)}
+            >
+              Open
+            </DigitalButton>
+            <DigitalButton
+              type="button"
+              effect="shimmer"
+              className={item.is_important ? 'item-action-button important active' : 'item-action-button important'}
+              onClick={() => props.onToggleImportant(props.sectionId, item)}
+              aria-pressed={item.is_important === 1}
+            >
+              {item.is_important ? 'Important' : 'Mark important'}
+            </DigitalButton>
+          </div>
+        </MagicCard>
+      ))}
+    </BentoGrid>
+  );
+}
