@@ -1,13 +1,14 @@
 import { getDb } from '../core/storage/db';
-import { listFeeds, type Feed, tryLockFeed, markFeedError } from '../core/storage/dao/feedsDao';
-import { syncFeedByUrl, type SyncResult } from '../core/rss/sync';
+import { listFeeds, type Feed, markFeedError } from '../core/storage/dao/feedsDao';
+import { mapWithConcurrency, syncFeedById, type SyncResult } from '../core/rss/sync';
+import type { SyncCompletedWire } from '../shared/ipcTypes';
 import { withModule } from './logging';
 
 type SchedulerState = 'stopped' | 'running';
 
 const log = withModule('scheduler');
 const DEFAULT_INTERVAL_MINUTES = 30;
-const MIN_INTERVAL_MINUTES = 10;
+const MIN_INTERVAL_MINUTES = 1;
 const TICK_MS = 60_000;
 const STARTUP_DELAY_MS = 5_000;
 export const MAX_SCHEDULER_CONCURRENCY = 4;
@@ -16,7 +17,7 @@ function minutesToMs(minutes: number) {
   return minutes * 60 * 1000;
 }
 
-function nextDueAt(feed: Feed) {
+export function nextDueAt(feed: Feed) {
   if (!feed.last_fetched_at) return 0;
   const last = Date.parse(feed.last_fetched_at);
   if (Number.isNaN(last)) return 0;
@@ -28,17 +29,14 @@ export async function runWithConcurrency<T>(
   limit: number,
   worker: (value: T) => Promise<void>
 ) {
-  const queue = [...values];
-  const workerCount = Math.min(Math.max(1, limit), queue.length);
-  await Promise.all(Array.from({ length: workerCount }, async () => {
-    while (queue.length > 0) {
-      const value = queue.shift();
-      if (value !== undefined) await worker(value);
-    }
-  }));
+  await mapWithConcurrency(values, limit, async (value) => {
+    await worker(value);
+    return undefined;
+  });
 }
 
 export class Scheduler {
+  private completedListeners = new Set<(event: SyncCompletedWire) => void>();
   private state: SchedulerState = 'stopped';
   private timer: NodeJS.Timeout | null = null;
   private startupTimer: NodeJS.Timeout | null = null;
@@ -63,6 +61,20 @@ export class Scheduler {
     log.info('stop');
   }
 
+  onSyncCompleted(listener: (event: SyncCompletedWire) => void) {
+    this.completedListeners.add(listener);
+    return () => this.completedListeners.delete(listener);
+  }
+
+  private emitCompleted(event: SyncCompletedWire) {
+    for (const listener of this.completedListeners) {
+      try {
+        listener(event);
+      } catch (error) {
+        log.warn('completion_listener_failed', { error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+  }
   isRunning() {
     return this.state === 'running';
   }
@@ -82,7 +94,7 @@ export class Scheduler {
   private async tick() {
     const db = getDb();
     const now = Date.now();
-    const dueFeeds = listFeeds(db, { limit: 1000, offset: 0 }).filter((feed) =>
+    const dueFeeds = listFeeds(db).filter((feed) =>
       feed.is_enabled === 1 &&
       feed.is_muted !== 1 &&
       !this.inFlight.has(feed.id) &&
@@ -90,7 +102,7 @@ export class Scheduler {
     );
 
     await runWithConcurrency(dueFeeds, MAX_SCHEDULER_CONCURRENCY, async (feed) => {
-      if (this.state !== 'running' || !tryLockFeed(db, feed.id)) return;
+      if (this.state !== 'running') return;
       this.inFlight.add(feed.id);
       try {
         await this.fetchOne(feed);
@@ -102,10 +114,12 @@ export class Scheduler {
 
   private async fetchOne(feed: Feed): Promise<SyncResult> {
     try {
-      const result = await syncFeedByUrl(getDb(), feed.url);
+      const db = getDb();
+      const result = await syncFeedById(db, feed.id);
       log.info('sync_complete', { feedId: feed.id, status: result.status, newItems: result.newItems });
-      const mapped = !!getDb().prepare('SELECT 1 FROM feed_sections WHERE feed_id=? LIMIT 1').get(feed.id);
-      if (!mapped) log.warn('unmapped_feed', { feedId: feed.id, url: feed.url });
+      const sectionIds = (db.prepare('SELECT section_id FROM feed_sections WHERE feed_id=? ORDER BY section_id').all(feed.id) as Array<{ section_id: number }>).map((row) => row.section_id);
+      if (sectionIds.length === 0) log.warn('unmapped_feed', { feedId: feed.id, url: feed.url });
+      this.emitCompleted({ source: 'scheduler', feedId: feed.id, sectionIds, status: result.status, newItems: result.newItems });
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

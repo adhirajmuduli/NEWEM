@@ -67,4 +67,52 @@ describe('manual sync IPC', () => {
     const allResult = await syncTrigger!(null, {});
     expect(allResult).toMatchObject({ status: 'ok', scope: 'all', requested: 2, triggered: 2, notModified: 1, errors: 0 });
   });
+
+  it('refreshes all requested feeds with a four-request network ceiling', async () => {
+    const db = tempDb();
+    const section = createSection(db, 'Concurrent', 0, 'concurrent');
+    for (let index = 0; index < 9; index += 1) {
+      const feed = createFeed(db, `https://example.com/${index}.xml`);
+      assignFeedToSection(db, feed.id, section.id);
+    }
+    let active = 0;
+    let maximum = 0;
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      active += 1;
+      maximum = Math.max(maximum, active);
+      await new Promise((resolve) => setTimeout(resolve, 4));
+      active -= 1;
+      return new Response(`<?xml version="1.0"?><rss><channel><title>Concurrent</title><link>https://example.com</link></channel></rss>`, { status: 200 });
+    }));
+
+    const result = await handlers().get('sync:trigger')!(null, { sectionId: section.id });
+    expect(result).toMatchObject({ requested: 9, triggered: 9, ok: 9 });
+    expect(maximum).toBe(4);
+  });
+
+  it('keeps a tested Washington Post feed mapped after add, duplicate add, and refresh', async () => {
+    const db = tempDb();
+    const section = createSection(db, 'World', 0, 'world');
+    const url = 'https://feeds.washingtonpost.com/rss/world';
+    vi.stubGlobal('fetch', vi.fn(async (requestUrl: string) => {
+      expect(requestUrl).toBe(url);
+      return new Response(rss('Washington Post World', 'https://www.washingtonpost.com/world/example'), {
+        status: 200,
+        headers: { 'content-type': 'text/xml; charset=utf-8' },
+      });
+    }));
+
+    const ipc = handlers();
+    const tested = await ipc.get('feeds:test')!(null, { url });
+    expect(tested).toMatchObject({ status: 'ok', feedUrl: url, title: 'Washington Post World' });
+
+    const first = await ipc.get('feeds:addToSection')!(null, { sectionId: section.id, url, enabled: true });
+    const duplicate = await ipc.get('feeds:addToSection')!(null, { sectionId: section.id, url, enabled: true });
+    expect(first).toMatchObject({ changed: 1, feed: { url, title: 'Washington Post World', is_enabled: 1 } });
+    expect(duplicate).toMatchObject({ changed: 0, feed: { id: first.feed.id } });
+
+    const synced = await ipc.get('sync:trigger')!(null, { feedId: first.feed.id });
+    expect(synced).toMatchObject({ status: 'ok', errors: 0 });
+    expect((db.prepare('SELECT COUNT(*) AS count FROM feed_sections WHERE feed_id=? AND section_id=?').get(first.feed.id, section.id) as { count: number }).count).toBe(1);
+  });
 });

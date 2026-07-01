@@ -4,7 +4,6 @@ import { format } from 'date-fns';
 import type { FeedWire } from '../../shared/ipcTypes';
 import type { SearchDateMode } from '../utils/dateRange';
 import { Calendar } from './ui/calendar';
-import { DigitalButton } from './ui/digital-button';
 
 export type SearchControlsProps = {
   query: string;
@@ -112,10 +111,10 @@ export function SearchControls(props: SearchControlsProps) {
       </div>
       <label className="check-field"><input type="checkbox" checked={props.unread} onChange={(event) => props.onUnreadChange(event.target.checked)} /> Unread</label>
       <label className="check-field"><input type="checkbox" checked={props.important} onChange={(event) => props.onImportantChange(event.target.checked)} /> Important</label>
-      <DigitalButton effect="neon" type="button" className="primary search-command" onClick={props.onSearch} disabled={props.searching} title="Search local articles">
+      <button type="button" className="primary search-command" onClick={props.onSearch} disabled={props.searching} title="Search local articles">
         <SearchIcon aria-hidden="true" />
         <span>{props.searching ? 'Searching...' : 'Search'}</span>
-      </DigitalButton>
+      </button>
       <button type="button" className="icon-command" onClick={props.onClear} title="Clear search" aria-label="Clear search">
         <XIcon aria-hidden="true" />
       </button>

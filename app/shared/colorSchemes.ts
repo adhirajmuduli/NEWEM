@@ -6,8 +6,8 @@ export type ColorSchemeDefinition = {
   gradient?: boolean;
 };
 
-export const COLOR_SCHEMES = [
-  { id: 'readit', label: 'READIT', colors: ['#161b22', '#1d2430', '#0b1018', '#2f80ed', '#1f9d55'], margin: '#0f1218' },
+const ALL_COLOR_SCHEMES = [
+  { id: 'readit', label: 'READIT', colors: ['#10151d', '#151b24', '#0a0e14', '#2f6fbd', '#111821'], margin: '#080b10' },
   { id: 'warm', label: 'Warm', colors: ['#f5cbcb', '#e0a899', '#b0ba99', '#8bae66', '#e0d5b0'], margin: '#715a5a' },
   { id: 'night', label: 'Night', colors: ['#1d2530', '#2f3b46', '#403d50', '#6a7591', '#a3b1c6'], margin: '#dcd7c9' },
   { id: 'sea', label: 'Sea', colors: ['#c2f4f5', '#d1e9f6', '#aaffc7', '#6fd1d7', '#ece2d0'], margin: '#4274d9' },
@@ -31,6 +31,9 @@ export const COLOR_SCHEMES = [
   { id: 'happy', label: 'Happy', colors: ['#f9d1b7', '#ffefa0', '#ffe2e2', '#b8e1ff', '#d3f8e2'], margin: '#f5cbcb' },
   { id: 'neutral', label: 'Neutral', colors: ['#f5f5f5', '#e7e7e7', '#dcd7c9', '#b0a695', '#a3a3a3'], margin: '#715a5a' },
 ] as const satisfies readonly ColorSchemeDefinition[];
+
+export const COLOR_SCHEMES = [ALL_COLOR_SCHEMES[0]] as const;
+export const DISABLED_COLOR_SCHEMES = ALL_COLOR_SCHEMES.slice(1);
 
 export type ColorSchemeId = (typeof COLOR_SCHEMES)[number]['id'];
 export const DEFAULT_COLOR_SCHEME_ID: ColorSchemeId = 'readit';
@@ -106,7 +109,7 @@ export function colorSchemeVariables(value: unknown): Record<`--${string}`, stri
     '--canvas-text': canvasText,
     '--accent': control,
     '--accent-contrast': controlText,
-    '--accent-2': manager,
+    '--accent-2': mixColors(control, '#ffffff', 0.2),
     '--border': mixColors(section, sectionText, 0.26),
     '--manager-border': mixColors(manager, managerText, 0.26),
     '--card-border': mixColors(card, cardText, 0.2),

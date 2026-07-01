@@ -60,19 +60,19 @@ describe('Stage 5 e2e user-managed feed flow', () => {
       }),
       updateFeed: vi.fn(async () => ({ changed: 1 })),
       removeFeedFromSection: vi.fn(async () => ({ changed: 1 })),
-      testFeed: vi.fn(async () => ({ status: 'ok', title: 'Mock RSS', site_url: null })),
+      testFeed: vi.fn(async () => ({ status: 'ok' as const, title: 'Mock RSS', site_url: null })),
       syncTrigger: vi.fn(async () => {
         items = [{ id: 1, feed_id: 1, link: 'https://example.com/a', title: 'Loaded item', description: 'Body', published_at: null, dedupe_key: 'a', created_at: new Date().toISOString(), feed_title: 'Mock RSS', is_read: 0, is_important: 0 }];
         sections = [{ ...sections[0], feeds: [{ ...sections[0].feeds[0], item_count: 1, unread_count: 1, last_fetched_at: new Date().toISOString() }] }];
-        return { status: 'ok', scope: 'section', requested: 1, triggered: 1, ok: 1, notModified: 0, errors: 0, newItems: 1, results: [] };
+        return { status: 'ok' as const, scope: 'section' as const, requested: 1, triggered: 1, ok: 1, notModified: 0, errors: 0, newItems: 1, results: [] };
       }),
       queryItems: vi.fn(async () => ({ items })),
       markItemsSeen: vi.fn(async () => ({ changed: 0 })),
       markSectionSeen: vi.fn(async () => ({ changed: 0 })),
       markItemRead: vi.fn(async () => ({ changed: 1 })),
-      toggleItemImportant: vi.fn(async () => ({ is_important: 1 })),
+      toggleItemImportant: vi.fn(async () => ({ is_important: 1 as const })),
       queryImportant: vi.fn(async () => ({ items: [] })),
-      getLayout: vi.fn(async () => ({ layout: { mode: 'stack', panels: [], appearance: {} } })),
+      getLayout: vi.fn(async () => ({ layout: { mode: 'stack' as const, panels: [], appearance: {} } })),
       setLayout: vi.fn(async ({ layout }) => ({ layout })),
       onSyncProgress: vi.fn(() => () => {}),
     exportOpml: vi.fn(async () => ({ opml: '<opml><body /></opml>' })),
@@ -100,6 +100,6 @@ describe('Stage 5 e2e user-managed feed flow', () => {
     await click('Refresh');
 
     expect(document.body.textContent).toContain('Loaded item');
-    expect(document.body.textContent).toContain('1 items');
+    expect(document.body.textContent).toContain('1 articles');
   });
 });

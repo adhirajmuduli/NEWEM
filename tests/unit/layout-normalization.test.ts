@@ -10,13 +10,14 @@ describe('Stage 6 layout normalization', () => {
   it('clamps panel widths and removes panels for deleted sections', () => {
     const layout: LayoutWire = {
       mode: 'columns',
-      theme: 'forest',
+      theme: 'forest' as LayoutWire['theme'],
       panels: [
         { id: 'world', x: 0, y: 0, w: 140, h: 1 },
         { id: 'deleted', x: 1, y: 0, w: 50, h: 1 },
         { id: 'tech', x: 2, y: 0, w: 10, h: 1 },
       ],
       appearance: { world: { mode: 'solid', solid: '#111111' }, deleted: { mode: 'solid', solid: '#222222' } },
+      dayWindows: { world: 7, deleted: 30, tech: -1 },
     };
 
     const normalized = normalizeLayoutForSections(layout, [section(1, 'tech'), section(2, 'world'), section(3, 'science')]);
@@ -26,7 +27,9 @@ describe('Stage 6 layout normalization', () => {
     expect(normalized.panels.find((panel) => panel.id === 'tech')?.w).toBe(32);
     expect(normalized.panels.find((panel) => panel.id === 'science')?.w).toBe(100);
     expect(normalized.appearance).toEqual({ world: { mode: 'solid', solid: '#111111' } });
-    expect(normalized.theme).toBe('forest');
+    expect(normalized.mode).toBe('stack');
+    expect(normalized.theme).toBe('readit');
+    expect(normalized.dayWindows).toEqual({ world: 7 });
   });
 
   it('resizes, reorders, and resets by stable panel key', () => {
@@ -38,14 +41,15 @@ describe('Stage 6 layout normalization', () => {
     expect(clampPanelWidth(12)).toBe(32);
     expect(resized.panels.find((panel) => panel.id === 'a')?.w).toBe(45);
     expect(moved.panels.map((panel) => panel.id)).toEqual(['b', 'a']);
-    expect(resetLayoutForSections(sections, 'warm')).toEqual({
+    expect(resetLayoutForSections(sections)).toEqual({
       mode: 'stack',
-      theme: 'warm',
+      theme: 'readit',
       panels: [
         { id: 'a', x: 0, y: 0, w: 100, h: 1 },
         { id: 'b', x: 1, y: 0, w: 100, h: 1 },
       ],
       appearance: {},
+      dayWindows: {},
     });
   });
 });

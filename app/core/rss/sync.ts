@@ -3,7 +3,7 @@ import { fetchFeed, type FetchFeedOptions, type FetchError } from './fetch';
 import { parseFeed } from './parser';
 import { getFeedByUrl, insertItems, logFetch, updateFeedCache, upsertFeedMeta } from './persist';
 import { normalizeFeedUrl } from './url';
-import { getFeed, listFeeds } from '../storage/dao/feedsDao';
+import { getFeed, listFeeds, markFeedError, tryLockFeed } from '../storage/dao/feedsDao';
 import { listFeedsForSection } from '../storage/dao/sectionsDao';
 
 export type SyncStatus = 'ok' | 'not_modified' | 'error';
@@ -15,7 +15,7 @@ export type SyncResult = {
   normalizedUrl: string;
   httpStatus?: number | null;
   newItems: number;
-  error?: FetchError | { code: 'parse_error' | 'feed_not_found' | 'feed_disabled' | 'feed_muted'; message: string };
+  error?: FetchError | { code: 'parse_error' | 'feed_not_found' | 'feed_disabled' | 'feed_muted' | 'feed_in_progress'; message: string };
 };
 
 export type ManualSyncScope = 'feed' | 'section' | 'all';
@@ -185,9 +185,53 @@ export async function syncFeedById(db: Database.Database, feedId: number, opts?:
       error: { code: 'feed_muted', message: `Feed ${feedId} is muted` },
     } satisfies SyncResult;
   }
-  return syncFeedByUrl(db, feed.url, opts);
+  if (!tryLockFeed(db, feedId)) {
+    return {
+      status: 'error',
+      feedId,
+      url: feed.url,
+      normalizedUrl: feed.url,
+      httpStatus: null,
+      newItems: 0,
+      error: { code: 'feed_in_progress', message: `Feed ${feedId} is already refreshing` },
+    } satisfies SyncResult;
+  }
+  try {
+    return await syncFeedByUrl(db, feed.url, opts);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    markFeedError(db, feedId, message);
+    return {
+      status: 'error',
+      feedId,
+      url: feed.url,
+      normalizedUrl: feed.url,
+      httpStatus: null,
+      newItems: 0,
+      error: { code: 'network_error', message },
+    } satisfies SyncResult;
+  }
 }
 
+export const MAX_SYNC_CONCURRENCY = 4;
+
+export async function mapWithConcurrency<T, R>(
+  values: T[],
+  limit: number,
+  worker: (value: T, index: number) => Promise<R>
+): Promise<R[]> {
+  if (values.length === 0) return [];
+  const results = new Array<R>(values.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(1, Math.trunc(limit)), values.length);
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < values.length) {
+      const index = nextIndex++;
+      results[index] = await worker(values[index], index);
+    }
+  }));
+  return results;
+}
 function summarize(scope: ManualSyncScope, requested: number, results: SyncResult[]): ManualSyncResult {
   return {
     status: 'ok',
@@ -209,18 +253,20 @@ export async function syncFeeds(
   opts?: FetchFeedOptions,
   onProgress?: (progress: SyncProgress) => void
 ) {
-  const results: SyncResult[] = [];
+  let completed = 0;
   onProgress?.({ scope, completed: 0, total: feedIds.length, percent: feedIds.length === 0 ? 100 : 0 });
-  for (const feedId of feedIds) {
-    results.push(await syncFeedById(db, feedId, opts));
+  const results = await mapWithConcurrency(feedIds, MAX_SYNC_CONCURRENCY, async (feedId) => {
+    const result = await syncFeedById(db, feedId, opts);
+    completed += 1;
     onProgress?.({
       scope,
-      completed: results.length,
+      completed,
       total: feedIds.length,
-      percent: Math.round((results.length / feedIds.length) * 100),
+      percent: Math.round((completed / feedIds.length) * 100),
       feedId,
     });
-  }
+    return result;
+  });
   return summarize(scope, feedIds.length, results);
 }
 
@@ -239,7 +285,7 @@ export async function syncAllFeeds(
   opts?: FetchFeedOptions,
   onProgress?: (progress: SyncProgress) => void
 ) {
-  const feeds = listFeeds(db, { limit: 1000, offset: 0 })
+  const feeds = listFeeds(db)
     .filter((feed) => feed.is_enabled === 1 && feed.is_muted !== 1);
   return syncFeeds(db, feeds.map((feed) => feed.id), 'all', opts, onProgress);
 }

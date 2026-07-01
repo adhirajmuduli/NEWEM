@@ -78,7 +78,7 @@ export function assignFeedToSection(db: Database.Database, feedId: number, secti
     `INSERT INTO feed_sections(feed_id, section_id) VALUES (?, ?)
      ON CONFLICT(feed_id, section_id) DO NOTHING`
   );
-  stmt.run(feedId, sectionId);
+  return stmt.run(feedId, sectionId).changes;
 }
 
 export function unassignFeedFromSection(db: Database.Database, feedId: number, sectionId: number) {

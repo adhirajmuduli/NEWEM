@@ -24,13 +24,13 @@ function apiWithLayout(layoutRef: { current: LayoutWire }): PreloadApi {
     addFeedToSection: vi.fn(async () => ({ changed: 0 })),
     updateFeed: vi.fn(async () => ({ changed: 0 })),
     removeFeedFromSection: vi.fn(async () => ({ changed: 0 })),
-    testFeed: vi.fn(async () => ({ status: 'ok' })),
-    syncTrigger: vi.fn(async () => ({ status: 'ok', scope: 'all', requested: 0, triggered: 0, ok: 0, notModified: 0, errors: 0, newItems: 0, results: [] })),
+    testFeed: vi.fn(async () => ({ status: 'ok' as const })),
+    syncTrigger: vi.fn(async () => ({ status: 'ok' as const, scope: 'all' as const, requested: 0, triggered: 0, ok: 0, notModified: 0, errors: 0, newItems: 0, results: [] })),
     queryItems: vi.fn(async () => ({ items: [] })),
     markItemsSeen: vi.fn(async () => ({ changed: 0 })),
     markSectionSeen: vi.fn(async () => ({ changed: 0 })),
     markItemRead: vi.fn(async () => ({ changed: 0 })),
-    toggleItemImportant: vi.fn(async () => ({ is_important: 1 })),
+    toggleItemImportant: vi.fn(async () => ({ is_important: 1 as const })),
     queryImportant: vi.fn(async () => ({ items: [] })),
     getLayout: vi.fn(async () => ({ layout: layoutRef.current })),
     setLayout: vi.fn(async ({ layout }) => {
@@ -67,18 +67,18 @@ afterEach(() => vi.restoreAllMocks());
 
 describe('Stage 6 persisted layout restore', () => {
   it('restores resized panel order and width after remount', async () => {
-    const layoutRef = { current: { mode: 'columns', theme: 'space', panels: [{ id: 'world', x: 0, y: 0, w: 64, h: 1 }, { id: 'tech', x: 1, y: 0, w: 42, h: 1 }], appearance: {} } as LayoutWire };
+    const layoutRef = { current: { mode: 'columns', theme: 'space' as LayoutWire['theme'], panels: [{ id: 'world', x: 0, y: 0, w: 64, h: 1 }, { id: 'tech', x: 1, y: 0, w: 42, h: 1 }], appearance: {} } as LayoutWire };
     let root: Root = await mount(apiWithLayout(layoutRef));
 
     expect((document.querySelector('[data-panel-id="world"]') as HTMLElement).style.order).toBe('0');
     expect((document.querySelector('[data-panel-id="world"]') as HTMLElement).style.getPropertyValue('--panel-width')).toBe('64%');
-    expect(document.documentElement.dataset.colorScheme).toBe('space');
+    expect(document.documentElement.dataset.colorScheme).toBe('readit');
     root.unmount();
 
     root = await mount(apiWithLayout(layoutRef));
     expect((document.querySelector('[data-panel-id="world"]') as HTMLElement).style.order).toBe('0');
     expect((document.querySelector('[data-panel-id="world"]') as HTMLElement).style.getPropertyValue('--panel-width')).toBe('64%');
-    expect(document.documentElement.dataset.colorScheme).toBe('space');
+    expect(document.documentElement.dataset.colorScheme).toBe('readit');
     root.unmount();
   });
 });

@@ -23,6 +23,7 @@ const dialog: any = electron?.dialog;
 const log = withModule('app');
 
 let mainWindow: any | null = null;
+let removeSchedulerListener: (() => void) | null = null;
 
 function setupSingleInstanceLock() {
   const gotLock = app.requestSingleInstanceLock();
@@ -56,6 +57,11 @@ function showFatalStartupError(error: unknown) {
 }
 
 function onReady() {
+  removeSchedulerListener ??= scheduler.onSyncCompleted((event) => {
+    for (const window of BrowserWindow?.getAllWindows?.() ?? []) {
+      if (!window.isDestroyed()) window.webContents.send('sync:completed', event);
+    }
+  });
   mainWindow = bootstrapApplication({
     initDb: () => initDb(),
     registerIpc: () => {
@@ -86,6 +92,8 @@ if (!app) {
 
   app.on('before-quit', () => {
     scheduler.stop();
+    removeSchedulerListener?.();
+    removeSchedulerListener = null;
     log.info('scheduler_stopped');
   });
 

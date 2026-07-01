@@ -1,8 +1,8 @@
 import React from 'react';
 import type { ItemWire } from '../../shared/ipcTypes';
 import { BentoGrid } from './ui/bento-grid';
-import { DigitalButton } from './ui/digital-button';
-import { MagicCard } from './ui/magic-card';
+
+const RENDER_BATCH_SIZE = 80;
 
 function fmtTime(iso?: string | null): string {
   if (!iso) return 'No date';
@@ -10,7 +10,7 @@ function fmtTime(iso?: string | null): string {
   return Number.isNaN(date.getTime()) ? 'No date' : date.toLocaleString();
 }
 
-function stripUnsafeHtml(html?: string | null) {
+export function plainTextFromFeedContent(html?: string | null) {
   if (!html) return '';
   const doc = new DOMParser().parseFromString(html, 'text/html');
   doc.querySelectorAll('script, style, iframe, object, embed, link, meta').forEach((node) => node.remove());
@@ -21,7 +21,7 @@ function stripUnsafeHtml(html?: string | null) {
       if (name.startsWith('on') || value.startsWith('javascript:')) node.removeAttribute(attr.name);
     }
   });
-  return doc.body.textContent?.replace(/s+/g, ' ').trim() ?? '';
+  return doc.body.textContent?.replace(/\s+/g, ' ').trim() ?? '';
 }
 
 export function ItemList(props: {
@@ -30,55 +30,78 @@ export function ItemList(props: {
   openExternalItem(sectionId: number, item: ItemWire): void;
   onToggleImportant(sectionId: number, item: ItemWire): void;
 }) {
+  const [visibleCount, setVisibleCount] = React.useState(() => Math.min(RENDER_BATCH_SIZE, props.items.length));
+  const loadMoreRef = React.useRef<HTMLButtonElement>(null);
+  const hasMore = visibleCount < props.items.length;
+
+  React.useEffect(() => {
+    setVisibleCount((current) => Math.min(props.items.length, Math.max(current, Math.min(RENDER_BATCH_SIZE, props.items.length))));
+  }, [props.items.length]);
+
+  React.useEffect(() => {
+    const target = loadMoreRef.current;
+    if (!target || !hasMore || typeof IntersectionObserver === 'undefined') return;
+    const root = target.closest('.section-feed-scroll, .search-results-scroll');
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setVisibleCount((current) => Math.min(props.items.length, current + RENDER_BATCH_SIZE));
+      }
+    }, { root, rootMargin: '320px 0px' });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMore, props.items.length, visibleCount]);
+
   if (props.items.length === 0) {
     return <div className="state-card">No unread items. Refresh the section or add feeds to bring news here.</div>;
   }
 
   return (
-    <BentoGrid className="item-list" aria-label="News items">
-      {props.items.map((item, index) => (
-        <MagicCard
-          as="article"
-          key={item.id}
-          data-featured={index % 7 === 0 ? 'true' : undefined}
-          className={item.is_read ? 'item-card read' : 'item-card'}
-        >
-          <div className="item-topline">
-            <span>{item.feed_title || 'Unknown feed'}</span>
-            <span>{fmtTime(item.published_at)}</span>
-          </div>
-          <a
-            href={item.link || '#'}
-            className="item-title"
-            onClick={(e) => {
-              e.preventDefault();
-              props.openExternalItem(props.sectionId, item);
-            }}
+    <>
+      <BentoGrid className="item-list" aria-label="News items">
+        {props.items.slice(0, visibleCount).map((item, index) => (
+          <article
+            key={item.id}
+            data-featured={index % 7 === 0 ? 'true' : undefined}
+            className={item.is_read ? 'item-card glass-card read' : 'item-card glass-card'}
           >
-            {item.title || '(untitled)'}
-          </a>
-          {item.description ? <p className="item-desc">{stripUnsafeHtml(item.description)}</p> : null}
-          <div className="item-actions">
-            <DigitalButton
-              type="button"
-              effect="shiny"
-              className="item-action-button"
-              onClick={() => props.openExternalItem(props.sectionId, item)}
+            <div className="item-topline">
+              <span className="item-source">{item.feed_title || 'Unknown feed'}</span>
+              <time dateTime={item.published_at || undefined}>{fmtTime(item.published_at)}</time>
+              <button
+                type="button"
+                className={item.is_important ? 'important-toggle active' : 'important-toggle'}
+                onClick={() => props.onToggleImportant(props.sectionId, item)}
+                aria-label={item.is_important ? 'Remove important mark' : 'Mark important'}
+                aria-pressed={item.is_important === 1}
+                title={item.is_important ? 'Remove important mark' : 'Mark important'}
+              >
+                i
+              </button>
+            </div>
+            <a
+              href={item.link || '#'}
+              className="item-title"
+              onClick={(e) => {
+                e.preventDefault();
+                props.openExternalItem(props.sectionId, item);
+              }}
             >
-              Open
-            </DigitalButton>
-            <DigitalButton
-              type="button"
-              effect="shimmer"
-              className={item.is_important ? 'item-action-button important active' : 'item-action-button important'}
-              onClick={() => props.onToggleImportant(props.sectionId, item)}
-              aria-pressed={item.is_important === 1}
-            >
-              {item.is_important ? 'Important' : 'Mark important'}
-            </DigitalButton>
-          </div>
-        </MagicCard>
-      ))}
-    </BentoGrid>
+              {item.title || '(untitled)'}
+            </a>
+            {item.description ? <p className="item-desc">{plainTextFromFeedContent(item.description)}</p> : null}
+          </article>
+        ))}
+      </BentoGrid>
+      {hasMore ? (
+        <button
+          ref={loadMoreRef}
+          type="button"
+          className="load-more-items"
+          onClick={() => setVisibleCount((current) => Math.min(props.items.length, current + RENDER_BATCH_SIZE))}
+        >
+          Load more news
+        </button>
+      ) : null}
+    </>
   );
 }

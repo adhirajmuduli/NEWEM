@@ -24,12 +24,18 @@ export function resetLayoutForSections(
     theme,
     panels: defaultPanelsForSections(sections),
     appearance: {},
+    dayWindows: {},
   };
 }
 export function normalizeLayoutForSections(layout: LayoutWire | undefined, sections: SectionWire[]): LayoutWire {
   const sectionKeys = new Set(sections.map((section) => section.key));
-  const mode = layout?.mode || DEFAULT_LAYOUT_MODE;
+  const mode: LayoutModeWire = layout?.mode === 'mosaic' ? 'mosaic' : DEFAULT_LAYOUT_MODE;
   const byId = new Map((layout?.panels || []).filter((panel) => sectionKeys.has(panel.id)).map((panel) => [panel.id, panel]));
+  const dayWindows = Object.fromEntries(
+    Object.entries(layout?.dayWindows || {}).filter(([key, value]) =>
+      sectionKeys.has(key) && (value === null || (Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 3650))
+    )
+  ) as Record<string, number | null>;
   const panels = sections.map((section, fallbackIndex) => {
     const existing = byId.get(section.key);
     return {
@@ -46,6 +52,7 @@ export function normalizeLayoutForSections(layout: LayoutWire | undefined, secti
     theme: getColorScheme(layout?.theme).id,
     panels: panels.map((panel, index) => ({ ...panel, x: index })),
     appearance: Object.fromEntries(Object.entries(layout?.appearance || {}).filter(([key]) => sectionKeys.has(key))),
+    dayWindows,
   };
 }
 

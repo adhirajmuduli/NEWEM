@@ -1,13 +1,14 @@
 import React from 'react';
-import { RefreshCwIcon, SettingsIcon } from 'lucide-react';
+import { RefreshCwIcon, SettingsIcon, XIcon } from 'lucide-react';
 import { SearchControls, type SearchControlsProps } from './SearchControls';
-import { DigitalButton } from './ui/digital-button';
+import { HELP_TEXT } from '../helpText';
 
 export function Toolbar(props: {
   busy: boolean;
   search: SearchControlsProps;
   onRefreshAll(): void;
   onOpenManager(): void;
+  onExitApplication(): void;
 }) {
   return (
     <header className="toolbar">
@@ -17,14 +18,17 @@ export function Toolbar(props: {
       </div>
       <SearchControls {...props.search} />
       <div className="toolbar-actions">
-        <DigitalButton effect="neon" type="button" onClick={props.onOpenManager} title="Manage sections, feeds, layout, and appearance">
+        <button type="button" onClick={props.onOpenManager} title={HELP_TEXT.manage}>
           <SettingsIcon aria-hidden="true" />
           <span>Manage</span>
-        </DigitalButton>
-        <DigitalButton effect="beam" type="button" className="primary" onClick={props.onRefreshAll} disabled={props.busy} title="Refresh all feeds">
+        </button>
+        <button type="button" className="primary" onClick={props.onRefreshAll} disabled={props.busy} title={HELP_TEXT.refreshAll}>
           <RefreshCwIcon aria-hidden="true" />
           <span>{props.busy ? 'Refreshing...' : 'Refresh all'}</span>
-        </DigitalButton>
+        </button>
+        <button type="button" className="exit-application" onClick={props.onExitApplication} title={HELP_TEXT.exitApplication} aria-label={HELP_TEXT.exitApplication}>
+          <XIcon aria-hidden="true" />
+        </button>
       </div>
     </header>
   );

@@ -2,25 +2,20 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   applyColorScheme,
   COLOR_SCHEMES,
+  DISABLED_COLOR_SCHEMES,
   colorSchemeVariables,
   contrastRatio,
   getColorScheme,
 } from '../../app/shared/colorSchemes';
 
 describe('reusable color schemes', () => {
-  it('contains the complete supplied palette catalog with five colors and one margin color', () => {
-    expect(COLOR_SCHEMES).toHaveLength(23);
-    expect(COLOR_SCHEMES.map((scheme) => scheme.id)).toEqual(expect.arrayContaining([
-      'warm', 'night', 'sea', 'space', 'off-white', 'kids', 'sky', 'cold', 'neon', 'nature',
-      'summer', 'fall', 'autumn', 'winter', 'sunny', 'gradient', 'forest', 'mountain',
-      'desert', 'sad', 'happy', 'neutral',
-    ]));
-    for (const scheme of COLOR_SCHEMES) {
-      expect(scheme.colors).toHaveLength(5);
-      expect([...scheme.colors, scheme.margin].every((color) => /^#[0-9a-f]{6}$/i.test(color))).toBe(true);
-    }
+  it('exposes only the dark READIT palette while preserving disabled definitions', () => {
+    expect(COLOR_SCHEMES).toHaveLength(1);
+    expect(COLOR_SCHEMES[0].id).toBe('readit');
+    expect(DISABLED_COLOR_SCHEMES).toHaveLength(22);
+    expect(COLOR_SCHEMES[0].colors).not.toContain('#1f9d55');
+    expect(COLOR_SCHEMES[0].margin).toBe('#080b10');
   });
-
   it('derives contrast-safe text for every semantic surface', () => {
     for (const scheme of COLOR_SCHEMES) {
       const variables = colorSchemeVariables(scheme.id);
@@ -45,9 +40,9 @@ describe('reusable color schemes', () => {
       dataset: {} as { colorScheme?: string },
     };
 
-    expect(applyColorScheme(target, 'forest').id).toBe('forest');
-    expect(target.dataset.colorScheme).toBe('forest');
-    expect(values.get('--manager-bg')).toBe('#f2e8cf');
+    expect(applyColorScheme(target, 'forest').id).toBe('readit');
+    expect(target.dataset.colorScheme).toBe('readit');
+    expect(values.get('--manager-bg')).toBe('#111821');
     expect(getColorScheme('unknown').id).toBe('readit');
   });
 });

@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "types": ["vite/client", "vitest/globals", "node", "react", "react-dom"],
+    "jsx": "react-jsx",
+    "noEmit": true
+  },
+  "include": [
+    "app/**/*",
+    "tests/**/*",
+    "globals.d.ts"
+  ],
+  "exclude": ["dist", "node_modules"]
+}

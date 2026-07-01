@@ -46,7 +46,7 @@ function makeApi() {
       return { changed: 1 };
     }),
     reorderSections: vi.fn(async ({ sectionIds }) => {
-      sections = sectionIds.map((id, position_index) => ({ ...sections.find((section) => section.id === id)!, position_index }));
+      sections = sectionIds.map((id: number, position_index: number) => ({ ...sections.find((section) => section.id === id)!, position_index }));
       return { changed: sectionIds.length };
     }),
     addFeedToSection: vi.fn(async ({ sectionId, url }) => {
@@ -70,15 +70,15 @@ function makeApi() {
       sections = sections.map((section) => section.id === sectionId ? { ...section, feeds: section.feeds.filter((row) => row.id !== feedId) } : section);
       return { changed: 1 };
     }),
-    testFeed: vi.fn(async () => ({ status: 'ok', title: 'Valid Feed', site_url: null })),
-    syncTrigger: vi.fn(async () => ({ status: 'ok', scope: 'all', requested: 1, triggered: 1, ok: 1, notModified: 0, errors: 0, newItems: 1, results: [] })),
+    testFeed: vi.fn(async ({ url }) => ({ status: 'ok' as const, feedUrl: url, title: 'Valid Feed', site_url: null })),
+    syncTrigger: vi.fn(async () => ({ status: 'ok' as const, scope: 'all' as const, requested: 1, triggered: 1, ok: 1, notModified: 0, errors: 0, newItems: 1, results: [] })),
     queryItems: vi.fn(async () => ({ items: [] })),
     markItemsSeen: vi.fn(async () => ({ changed: 0 })),
     markSectionSeen: vi.fn(async () => ({ changed: 0 })),
     markItemRead: vi.fn(async () => ({ changed: 1 })),
-    toggleItemImportant: vi.fn(async () => ({ is_important: 1 })),
+    toggleItemImportant: vi.fn(async () => ({ is_important: 1 as const })),
     queryImportant: vi.fn(async () => ({ items: [] })),
-    getLayout: vi.fn(async () => ({ layout: { mode: 'stack', panels: [], appearance: {} } })),
+    getLayout: vi.fn(async () => ({ layout: { mode: 'stack' as const, panels: [], appearance: {} } })),
     setLayout: vi.fn(async ({ layout }) => ({ layout })),
     onSyncProgress: vi.fn(() => () => {}),
     exportOpml: vi.fn(async () => ({ opml: '<opml><body /></opml>' })),
@@ -86,6 +86,7 @@ function makeApi() {
     exportBackup: vi.fn(async () => ({ filePath: 'backup.db' })),
     exportDiagnostics: vi.fn(async () => ({ filePath: 'diagnostics.json', entries: 0 })),
     openExternal: vi.fn(async () => ({ opened: true })),
+    closeApplication: vi.fn(async () => ({ closing: true as const })),
   };
   return api;
 }
@@ -115,6 +116,13 @@ async function click(label: string) {
   await flush();
 }
 
+async function selectSection(name: string) {
+  const button = Array.from(document.querySelectorAll<HTMLButtonElement>('.section-tile'))
+    .find((node) => node.querySelector('strong')?.textContent === name);
+  expect(button).toBeTruthy();
+  await act(async () => button!.click());
+  await flush();
+}
 describe('Stage 5 section and feed UI', () => {
   let root: Root;
   let api: PreloadApi;
@@ -138,7 +146,7 @@ describe('Stage 5 section and feed UI', () => {
     await setInput('New section', 'Science');
     await click('Create');
     expect(api.createSection).toHaveBeenCalledWith({ name: 'Science' });
-    await setInput('Rename section', 'Research');
+    await setInput('Rename selected section', 'Research');
     await click('Rename');
     expect(api.updateSection).toHaveBeenCalled();
 
@@ -152,17 +160,33 @@ describe('Stage 5 section and feed UI', () => {
 
   it('requires a successful feed test before adding a feed to a section', async () => {
     await click('Manage');
+    await selectSection('Tech');
     await setInput('https://example.com/feed.xml', 'https://example.com/rss.xml');
     await click('Test feed');
     await click('Add feed');
 
     expect(api.testFeed).toHaveBeenCalledWith({ url: 'https://example.com/rss.xml' });
-    expect(api.addFeedToSection).toHaveBeenCalledWith({ sectionId: 1, url: 'https://example.com/rss.xml', fetchIntervalMinutes: 30, enabled: true });
-    expect(document.body.textContent).toContain('Feed 1');
+    expect(api.addFeedToSection).toHaveBeenCalledWith({ sectionId: 1, url: 'https://example.com/rss.xml', enabled: true });
+    expect(document.body.textContent).toContain('1 feeds');
+  });
+
+  it('shows an empty interval placeholder, contextual help, and a working exit control', async () => {
+    await click('Manage');
+    await selectSection('Tech');
+    const interval = document.querySelector('input[placeholder="Feed fetch interval (minutes)"]') as HTMLInputElement;
+    expect(interval.value).toBe('');
+    expect(interval.title).toContain('Suggested: 30 minutes');
+    expect(document.querySelector('button[title^="Important:"]')).toBeTruthy();
+
+    const exit = document.querySelector('button[aria-label="Exit the application."]') as HTMLButtonElement;
+    expect(exit).toBeTruthy();
+    await act(async () => exit.click());
+    expect(api.closeApplication).toHaveBeenCalledOnce();
   });
 
   it('keeps refreshed items visible when one source fails', async () => {
     await click('Manage');
+    await selectSection('Tech');
     await setInput('https://example.com/feed.xml', 'https://example.com/rss.xml');
     await click('Test feed');
     await click('Add feed');

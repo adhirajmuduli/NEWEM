@@ -123,8 +123,8 @@ describe('storage migrations', () => {
       INSERT INTO sections(name, position_index) VALUES ('Legacy Section', 0);
       INSERT INTO feeds(url, fetch_error, is_enabled) VALUES ('https://example.com/rss.xml', 'legacy failure', 1);
       INSERT INTO feed_sections(feed_id, section_id) VALUES (1, 1);
-      INSERT INTO items(feed_id, link, title, dedupe_key, seen_at)
-      VALUES (1, 'https://example.com/a', 'Seen item', 'legacy-seen', '2026-01-01T00:00:00.000Z');
+      INSERT INTO items(feed_id, link, title, dedupe_key, seen_at, published_at)
+      VALUES (1, 'https://example.com/a', 'Seen item', 'legacy-seen', '2026-01-01T00:00:00.000Z', 'Mon, 29 Jun 2026 12:30:00 GMT');
     `);
     oldDb.close();
 
@@ -138,6 +138,7 @@ describe('storage migrations', () => {
     expect(feed.is_fetching).toBe(0);
     expect(state.is_read).toBe(1);
     expect(state.read_at).toBe('2026-01-01T00:00:00.000Z');
+    expect(db.prepare(`SELECT published_at FROM items WHERE id=1`).get()).toMatchObject({ published_at: '2026-06-29T12:30:00.000Z' });
     expect(listSections(db)).toHaveLength(15);
     expect(listSections(db).some((row) => row.name === 'Legacy Section')).toBe(true);
   });
@@ -185,6 +186,21 @@ describe('storage DAOs', () => {
     expect(getItemsBySection(db, section.id, { includeSeen: true })).toHaveLength(2);
   });
 
+  it('returns every stored item only when the caller explicitly requests an uncapped read', () => {
+    const db = initDb(tempDbDir());
+    const section = createSection(db, 'Archive', 0, 'archive');
+    const feed = createFeed(db, 'https://example.com/archive.xml');
+    assignFeedToSection(db, feed.id, section.id);
+    insertItems(db, feed.id, Array.from({ length: 240 }, (_, index) => ({
+      link: `https://example.com/archive/${index}`,
+      title: `Archive ${index}`,
+      published_at: new Date(Date.UTC(2026, 5, 29, 0, 0, index)).toISOString(),
+      dedupe_key: `archive-${index}`,
+    })));
+
+    expect(getItemsBySection(db, section.id, { includeSeen: true })).toHaveLength(50);
+    expect(getItemsBySection(db, section.id, { includeSeen: true, all: true })).toHaveLength(240);
+  });
   it('persists user-defined sections and feed mappings across database reopen', () => {
     const dir = tempDbDir();
     let db = initDb(dir);

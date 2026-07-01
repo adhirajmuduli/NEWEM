@@ -1,3 +1,4 @@
+import { validateSyncCompletedWire, validateSyncProgressWire } from './validators';
 import type {
   ExternalOpenPayload,
   FeedAddToSectionPayload,
@@ -14,6 +15,7 @@ import type {
   MarkSectionSeenPayload,
   OpmlImportPayload,
   SyncProgressWire,
+  SyncCompletedWire,
   PreloadApi,
   PRELOAD_API_VERSION,
   SectionCreatePayload,
@@ -62,9 +64,14 @@ const api: PreloadApi = {
   testFeed: (payload: FeedTestPayload) => invoke('feeds:test', payload),
   syncTrigger: (payload?: SyncTriggerPayload) => invoke('sync:trigger', payload ?? {}),
   onSyncProgress: (listener: (progress: SyncProgressWire) => void) => {
-    const wrapped = (_event: unknown, progress: SyncProgressWire) => listener(progress);
+    const wrapped = (_event: unknown, progress: unknown) => listener(validateSyncProgressWire(progress));
     ipcRenderer.on('sync:progress', wrapped);
     return () => ipcRenderer.removeListener('sync:progress', wrapped);
+  },
+  onSyncCompleted: (listener: (event: SyncCompletedWire) => void) => {
+    const wrapped = (_event: unknown, value: unknown) => listener(validateSyncCompletedWire(value));
+    ipcRenderer.on('sync:completed', wrapped);
+    return () => ipcRenderer.removeListener('sync:completed', wrapped);
   },
   queryItems: (payload: ItemsQueryPayload) => invoke('items:query', payload),
   markItemsSeen: (payload: MarkItemsSeenPayload) => invoke('items:markSeen', payload),
@@ -85,6 +92,7 @@ const api: PreloadApi = {
   importOpml: (payload: OpmlImportPayload) => invoke('portability:importOpml', payload),
   exportBackup: () => invoke('portability:backup'),
   exportDiagnostics: () => invoke('diagnostics:export'),
+  closeApplication: () => invoke('application:quit'),
 };
 
 if (contextBridge?.exposeInMainWorld) {
