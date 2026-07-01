@@ -18,14 +18,25 @@ export interface Feed {
   updated_at: string;
 }
 
-export function createFeed(db: Database.Database, url: string) {
+export function createFeed(
+  db: Database.Database,
+  url: string,
+  metadata?: { title?: string | null; siteUrl?: string | null }
+) {
   const normalizedUrl = assertValidFeedUrl(url);
   const stmt = db.prepare(
-    `INSERT INTO feeds(url) VALUES (?)
-     ON CONFLICT(url) DO UPDATE SET url=excluded.url, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+    `INSERT INTO feeds(url, title, site_url) VALUES (@url, @title, @site_url)
+     ON CONFLICT(url) DO UPDATE SET
+       title=COALESCE(excluded.title, feeds.title),
+       site_url=COALESCE(excluded.site_url, feeds.site_url),
+       updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
      RETURNING *`
   );
-  return stmt.get(normalizedUrl) as Feed;
+  return stmt.get({
+    url: normalizedUrl,
+    title: metadata?.title ?? null,
+    site_url: metadata?.siteUrl ?? null,
+  }) as Feed;
 }
 
 export function isFeedDue(feed: { last_fetched_at?: string | null; fetch_interval_minutes?: number | null }) {
@@ -87,10 +98,12 @@ export function bulkAddFeeds(db: Database.Database, urlsText: string) {
 }
 
 export function listFeeds(db: Database.Database, opts?: { limit?: number; offset?: number }) {
-  const limit = opts?.limit ?? 100;
-  const offset = opts?.offset ?? 0;
-  const stmt = db.prepare(`SELECT * FROM feeds ORDER BY id LIMIT ? OFFSET ?`);
-  return stmt.all(limit, offset) as Feed[];
+  const offset = Math.max(0, opts?.offset ?? 0);
+  if (opts?.limit === undefined) {
+    return db.prepare(`SELECT * FROM feeds ORDER BY id LIMIT -1 OFFSET ?`).all(offset) as Feed[];
+  }
+  const limit = Math.max(1, Math.trunc(opts.limit));
+  return db.prepare(`SELECT * FROM feeds ORDER BY id LIMIT ? OFFSET ?`).all(limit, offset) as Feed[];
 }
 
 export function getFeed(db: Database.Database, id: number) {

@@ -1,13 +1,16 @@
 import React from 'react';
+import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react';
 import { applyColorScheme, COLOR_SCHEMES, DEFAULT_COLOR_SCHEME_ID, getColorScheme } from '../../shared/colorSchemes';
 import type { ColorSchemeId } from '../../shared/colorSchemes';
-import type { FeedWire, ItemWire, LayoutModeWire, LayoutWire, PreloadApi, SectionAppearanceWire, SectionWire, SyncProgressWire } from '../../shared/ipcTypes';
+import type { FeedWire, ItemWire, LayoutModeWire, LayoutWire, PreloadApi, SectionAppearanceWire, SectionWire, SyncCompletedWire, SyncProgressWire } from '../../shared/ipcTypes';
 import { SectionPanel } from './SectionPanel';
+import { AppearanceEditor } from './AppearanceEditor';
 import { ItemList } from './ItemList';
 import { Toolbar } from './Toolbar';
 import { ResizeHandle } from '../layout/DragHandle';
 import { clampPanelWidth, movePanel, normalizeLayoutForSections, orderedSectionsForLayout, panelWidth, resetLayoutForSections, resizePanel } from '../layout/GridLayout';
 import { exactLocalDayRange, relativeDateRange, type SearchDateMode } from '../utils/dateRange';
+import { HELP_TEXT } from '../helpText';
 
 declare global {
   interface Window {
@@ -16,7 +19,7 @@ declare global {
 }
 
 type ItemState = Record<number, { loading: boolean; error: string | null; warning: string | null; items: ItemWire[] }>;
-type FeedTestState = { url: string; status: 'idle' | 'testing' | 'ok' | 'error'; message: string };
+type FeedTestState = { url: string; resolvedUrl?: string; status: 'idle' | 'testing' | 'ok' | 'error'; message: string };
 
 const PANEL_CONTROLS_ENABLED = false;
 
@@ -41,40 +44,25 @@ function styleForLayout(mode: LayoutModeWire | undefined) {
 }
 
 function selectedAppearance(layout: LayoutWire, section?: SectionWire): SectionAppearanceWire {
-  if (!section) return { mode: 'solid', solid: '#161b22' };
-  return layout.appearance?.[section.key] || { mode: 'solid', solid: '#161b22' };
-}
-
-async function readImageAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    if (!file.type.startsWith('image/')) {
-      reject(new Error('Select an image file'));
-      return;
-    }
-    if (file.size > 1_500_000) {
-      reject(new Error('Image must be 1.5 MB or smaller'));
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error('Image import failed'));
-    reader.readAsDataURL(file);
-  });
+  if (!section) return { mode: 'solid', solid: '#151b24' };
+  return layout.appearance?.[section.key] || { mode: 'solid', solid: '#151b24' };
 }
 
 export function AppShell() {
   const [sections, setSections] = React.useState<SectionWire[]>([]);
   const [items, setItems] = React.useState<ItemState>({});
-  const [layout, setLayoutState] = React.useState<LayoutWire>({ mode: 'stack', theme: DEFAULT_COLOR_SCHEME_ID, panels: [], appearance: {} });
+  const [layout, setLayoutState] = React.useState<LayoutWire>({ mode: 'stack', theme: DEFAULT_COLOR_SCHEME_ID, panels: [], appearance: {}, dayWindows: {} });
   const [managerOpen, setManagerOpen] = React.useState(false);
+  const [managerDetailsOpen, setManagerDetailsOpen] = React.useState(false);
   const [selectedSectionId, setSelectedSectionId] = React.useState<number | null>(null);
   const [newSectionName, setNewSectionName] = React.useState('');
   const [renameValue, setRenameValue] = React.useState('');
   const [feedUrl, setFeedUrl] = React.useState('');
-  const [feedInterval, setFeedInterval] = React.useState('30');
+  const [feedInterval, setFeedInterval] = React.useState('');
   const [feedTest, setFeedTest] = React.useState<FeedTestState>({ url: '', status: 'idle', message: '' });
   const [globalBusy, setGlobalBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [transientError, setTransientError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [searchUnread, setSearchUnread] = React.useState(false);
@@ -89,8 +77,9 @@ export function AppShell() {
   const [globalProgress, setGlobalProgress] = React.useState<number | undefined>();
   const [dataMessage, setDataMessage] = React.useState('');
   const panelElements = React.useRef(new Map<string, HTMLDivElement>());
+  const selectedSectionIdRef = React.useRef<number | null>(null);
 
-  const selectedSection = sections.find((section) => section.id === selectedSectionId) || sections[0];
+  const selectedSection = sections.find((section) => section.id === selectedSectionId);
   const orderedSections = React.useMemo(() => orderedSectionsForLayout(sections, layout), [sections, layout]);
   const appearance = selectedAppearance(layout, selectedSection);
   const colorScheme = getColorScheme(layout.theme);
@@ -105,25 +94,22 @@ export function AppShell() {
     setSections(response.sections);
     setLayoutState((current) => normalizeLayoutForSections(current, response.sections));
     setItems((current) => ({ ...emptyItems(response.sections), ...current }));
-    if (response.sections.length > 0) {
-      const target = nextSelectedId && response.sections.some((section) => section.id === nextSelectedId)
-        ? nextSelectedId
-        : selectedSectionId && response.sections.some((section) => section.id === selectedSectionId)
-          ? selectedSectionId
-          : response.sections[0].id;
-      setSelectedSectionId(target);
-      setRenameValue(response.sections.find((section) => section.id === target)?.name || response.sections[0].name);
-    } else {
-      setSelectedSectionId(null);
-      setRenameValue('');
-    }
+    const currentSelectedId = selectedSectionIdRef.current;
+    const target = nextSelectedId && response.sections.some((section) => section.id === nextSelectedId)
+      ? nextSelectedId
+      : currentSelectedId && response.sections.some((section) => section.id === currentSelectedId)
+        ? currentSelectedId
+        : null;
+    setSelectedSectionId(target);
+    setRenameValue(target ? response.sections.find((section) => section.id === target)?.name || '' : '');
+    if (target === null) setManagerDetailsOpen(false);
     return response.sections;
   }
 
   async function loadItems(sectionId: number) {
     setItems((current) => ({ ...current, [sectionId]: { ...(current[sectionId] || { items: [], warning: null }), loading: true, error: null } }));
     try {
-      const response = await api().queryItems({ sectionId, limit: 100 });
+      const response = await api().queryItems({ sectionId, all: true });
       setItems((current) => ({ ...current, [sectionId]: { loading: false, error: null, warning: current[sectionId]?.warning || null, items: response.items } }));
     } catch (err) {
       setItems((current) => ({
@@ -145,10 +131,7 @@ export function AppShell() {
       setSections(sectionsResponse.sections);
       setItems(emptyItems(sectionsResponse.sections));
       setLayoutState(normalized);
-      if (sectionsResponse.sections[0]) {
-        setSelectedSectionId(sectionsResponse.sections[0].id);
-        setRenameValue(sectionsResponse.sections[0].name);
-      }
+
       await Promise.all(sectionsResponse.sections.map((section) => loadItems(section.id)));
       console.info('app_shell_ready sections=' + sectionsResponse.sections.length);
     } catch (err) {
@@ -164,8 +147,14 @@ export function AppShell() {
   React.useEffect(() => {
     void initialLoad();
   }, []);
+  React.useEffect(() => {
+    if (!transientError) return;
+    const timer = window.setTimeout(() => setTransientError(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [transientError]);
 
   React.useEffect(() => {
+    selectedSectionIdRef.current = selectedSection?.id ?? null;
     if (selectedSection) setRenameValue(selectedSection.name);
   }, [selectedSection?.id]);
 
@@ -196,6 +185,28 @@ export function AppShell() {
     }) || (() => {});
   }, []);
 
+  React.useEffect(() => {
+    const pendingSectionIds = new Set<number>();
+    let reloadTimer: number | undefined;
+    const unsubscribe = window.readit?.onSyncCompleted?.((event: SyncCompletedWire) => {
+      event.sectionIds.forEach((sectionId) => pendingSectionIds.add(sectionId));
+      if (reloadTimer !== undefined) return;
+      reloadTimer = window.setTimeout(() => {
+        reloadTimer = undefined;
+        const sectionIds = [...pendingSectionIds];
+        pendingSectionIds.clear();
+        void refreshSections(selectedSectionIdRef.current ?? undefined)
+          .then((nextSections) => Promise.all(sectionIds
+            .filter((sectionId) => nextSections.some((section) => section.id === sectionId))
+            .map((sectionId) => loadItems(sectionId))))
+          .catch((err) => setError(`Automatic refresh update failed: ${err instanceof Error ? err.message : String(err)}`));
+      }, 750);
+    });
+    return () => {
+      unsubscribe?.();
+      if (reloadTimer !== undefined) window.clearTimeout(reloadTimer);
+    };
+  }, []);
   async function persistLayout(next: LayoutWire) {
     const normalized = normalizeLayoutForSections(next, sections);
     setLayoutState(normalized);
@@ -209,7 +220,10 @@ export function AppShell() {
     const response = await api().createSection({ name });
     setNewSectionName('');
     await refreshSections(response.section?.id);
-    if (response.section?.id) await loadItems(response.section.id);
+    if (response.section?.id) {
+      setManagerDetailsOpen(true);
+      await loadItems(response.section.id);
+    }
   }
 
   async function renameSection() {
@@ -241,25 +255,65 @@ export function AppShell() {
     const url = feedUrl.trim();
     if (!url) return;
     setFeedTest({ url, status: 'testing', message: 'Testing feed...' });
-    const response = await api().testFeed({ url });
-    if (response.status === 'ok') {
-      setFeedTest({ url, status: 'ok', message: response.title ? `Valid feed: ${response.title}` : 'Valid RSS/Atom feed' });
-    } else {
-      setFeedTest({ url, status: 'error', message: response.error?.message || 'Feed validation failed' });
+    try {
+      const response = await api().testFeed({ url });
+      if (response.status === 'ok') {
+        const resolvedUrl = response.feedUrl || url;
+        const discovery = response.discovered ? ` Discovered: ${resolvedUrl}` : '';
+        setFeedTest({
+          url,
+          resolvedUrl,
+          status: 'ok',
+          message: (response.title ? `Valid feed: ${response.title}.` : 'Valid RSS/Atom feed.') + discovery,
+        });
+      } else {
+        setFeedTest({ url, status: 'error', message: response.error?.message || 'Feed validation failed' });
+      }
+    } catch (error) {
+      setFeedTest({ url, status: 'error', message: error instanceof Error ? error.message : String(error) });
     }
   }
 
   async function addFeed() {
     if (!selectedSection || feedTest.status !== 'ok' || feedTest.url !== feedUrl.trim()) return;
-    await api().addFeedToSection({
-      sectionId: selectedSection.id,
-      url: feedUrl.trim(),
-      fetchIntervalMinutes: Number(feedInterval) || undefined,
-      enabled: true,
-    });
-    setFeedUrl('');
-    setFeedTest({ url: '', status: 'idle', message: '' });
-    await refreshSections(selectedSection.id);
+    const sectionId = selectedSection.id;
+    const sectionName = selectedSection.name;
+    const intervalText = feedInterval.trim();
+    const interval = intervalText ? Number(intervalText) : undefined;
+    if (interval !== undefined && (!Number.isInteger(interval) || interval < 1 || interval > 1440)) {
+      setFeedTest({ ...feedTest, status: 'error', message: 'Feed interval must be a whole number from 1 to 1440 minutes.' });
+      return;
+    }
+    try {
+      const response = await api().addFeedToSection({
+        sectionId,
+        url: feedTest.resolvedUrl || feedUrl.trim(),
+        ...(interval === undefined ? {} : { fetchIntervalMinutes: interval }),
+        enabled: true,
+      });
+      setFeedUrl('');
+      setFeedInterval('');
+      setFeedTest({
+        url: '',
+        status: 'idle',
+        message: response.changed === 1
+          ? `Feed added to ${sectionName}.`
+          : `Feed already belongs to ${sectionName}; its settings were updated.`,
+      });
+      await refreshSections(sectionId);
+    } catch (error) {
+      setFeedTest({ ...feedTest, status: 'error', message: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  async function exitApplication() {
+    try {
+      const closeApplication = api().closeApplication;
+      if (closeApplication) await closeApplication();
+      else window.close();
+    } catch (error) {
+      setTransientError(`Could not exit READIT: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   async function toggleFeed(feed: FeedWire) {
@@ -362,7 +416,7 @@ export function AppShell() {
         : relativeDateRange(searchDays);
       const response = await api().queryItems({
         sectionId: -1,
-        limit: 200,
+        all: true,
         includeSeen: true,
         query: searchQuery.trim() || undefined,
         feedId: searchFeedId ? Number(searchFeedId) : undefined,
@@ -447,14 +501,20 @@ export function AppShell() {
     }
   }
 
-  async function updateAppearance(next: SectionAppearanceWire) {
-    if (!selectedSection) return;
+  async function updateAppearanceForSection(sectionKey: string, next: SectionAppearanceWire) {
+    if (!sections.some((section) => section.key === sectionKey)) throw new Error('Section no longer exists');
     await persistLayout({
       ...layout,
-      appearance: { ...(layout.appearance || {}), [selectedSection.key]: next },
+      appearance: { ...(layout.appearance || {}), [sectionKey]: next },
     });
   }
 
+  async function updateSectionDayWindow(sectionKey: string, days: number | null) {
+    await persistLayout({
+      ...layout,
+      dayWindows: { ...(layout.dayWindows || {}), [sectionKey]: days },
+    });
+  }
   async function resetLayout() {
     await persistLayout(resetLayoutForSections(sections, colorScheme.id));
   }
@@ -516,7 +576,9 @@ export function AppShell() {
         }}
         onRefreshAll={() => void refreshAll()}
         onOpenManager={() => setManagerOpen((open) => !open)}
+        onExitApplication={() => void exitApplication()}
       />
+      {transientError ? <div className="app-error transient" role="alert">{transientError}</div> : null}
       {error ? <div className="app-error" role="alert">{error}</div> : null}
       {notice ? <div className="app-notice" role="status">{notice}</div> : null}
       {searchVisible ? <section className="search-results" aria-label="Search results"><header><h2>Local results</h2><span>{searchResults.length} item(s)</span><button type="button" onClick={() => setSearchVisible(false)}>Close</button></header><div className="search-results-scroll"><ItemList sectionId={-1} items={searchResults} openExternalItem={(sectionId, item) => void openItem(sectionId, item)} onToggleImportant={(sectionId, item) => void toggleImportant(sectionId, item)} /></div></section> : null}
@@ -524,105 +586,144 @@ export function AppShell() {
       <main className="workspace" id="workspace" tabIndex={-1}>
         {managerOpen ? (
           <aside className="manager-panel" aria-label="Section and feed management">
-            <div className="manager-block">
-              <h2>Sections</h2>
-              <div className="section-selector">
-                {sections.map((section) => (
-                  <button
-                    key={section.id}
-                    type="button"
-                    className={section.id === selectedSection?.id ? 'selected' : ''}
-                    onClick={() => setSelectedSectionId(section.id)}
-                  >
-                    {section.name}
-                  </button>
-                ))}
-              </div>
-              <div className="inline-form">
-                <input value={newSectionName} onChange={(event) => setNewSectionName(event.target.value)} placeholder="New section" />
-                <button type="button" onClick={() => void createSection()}>Create</button>
-              </div>
-              <div className="inline-form">
-                <input value={renameValue} onChange={(event) => setRenameValue(event.target.value)} placeholder="Rename section" />
-                <button type="button" onClick={() => void renameSection()} disabled={!selectedSection}>Rename</button>
-              </div>
-              <div className="button-row">
-                <button type="button" onClick={() => void moveSection(-1)} disabled={!selectedSection}>Move up</button>
-                <button type="button" onClick={() => void moveSection(1)} disabled={!selectedSection}>Move down</button>
-                <button type="button" className="danger" onClick={() => void deleteSection()} disabled={!selectedSection}>Delete</button>
-              </div>
-            </div>
+            <div className="manager-pane manager-top-pane">
+              <div className="manager-pane-scroll">
+                <div className="manager-block">
+                  <h2>Sections</h2>
+                  <div className="section-selector" role="list" aria-label="Sections">
+                    {sections.map((section) => (
+                      <button
+                        key={section.id}
+                        type="button"
+                        role="listitem"
+                        className={section.id === selectedSection?.id ? 'section-tile selected' : 'section-tile'}
+                        aria-pressed={section.id === selectedSection?.id}
+                        onClick={() => {
+                          setSelectedSectionId(section.id);
+                          selectedSectionIdRef.current = section.id;
+                          setManagerDetailsOpen(true);
+                        }}
+                      >
+                        <strong>{section.name}</strong>
+                        <span>{section.feeds.length} feeds</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="inline-form">
+                    <input value={newSectionName} onChange={(event) => setNewSectionName(event.target.value)} placeholder="New section" />
+                    <button type="button" onClick={() => void createSection()}>Create</button>
+                  </div>
+                  <div className="inline-form">
+                    <input value={renameValue} onChange={(event) => setRenameValue(event.target.value)} placeholder="Rename selected section" disabled={!selectedSection} />
+                    <button type="button" onClick={() => void renameSection()} disabled={!selectedSection}>Rename</button>
+                  </div>
+                  <div className="button-row">
+                    <button type="button" onClick={() => void moveSection(-1)} disabled={!selectedSection}>Move up</button>
+                    <button type="button" onClick={() => void moveSection(1)} disabled={!selectedSection}>Move down</button>
+                    <button type="button" className="danger" onClick={() => void deleteSection()} disabled={!selectedSection}>Delete</button>
+                  </div>
+                </div>
 
-            <div className="manager-block">
-              <h2>Feeds</h2>
-              <div className="inline-form stack-form">
-                <input value={feedUrl} onChange={(event) => { setFeedUrl(event.target.value); setFeedTest({ url: '', status: 'idle', message: '' }); }} placeholder="https://example.com/feed.xml" />
-                <input value={feedInterval} onChange={(event) => setFeedInterval(event.target.value)} inputMode="numeric" placeholder="Interval minutes" />
-                <div className="button-row">
-                  <button type="button" onClick={() => void testFeed()} disabled={!selectedSection || feedTest.status === 'testing'}>Test feed</button>
-                  <button type="button" onClick={() => void addFeed()} disabled={!selectedSection || feedTest.status !== 'ok' || feedTest.url !== feedUrl.trim()}>Add feed</button>
+                <div className="manager-block">
+                  <h2>Feeds</h2>
+                  <div className="inline-form stack-form">
+                    <input
+                      value={feedUrl}
+                      onChange={(event) => { setFeedUrl(event.target.value); setFeedTest({ url: '', status: 'idle', message: '' }); }}
+                      placeholder="https://example.com/feed.xml"
+                      title={HELP_TEXT.feedUrl}
+                      aria-label="RSS or Atom feed URL"
+                      disabled={!selectedSection}
+                    />
+                    <input
+                      value={feedInterval}
+                      onChange={(event) => setFeedInterval(event.target.value)}
+                      inputMode="numeric"
+                      aria-label="Feed fetch interval in minutes"
+                      placeholder="Feed fetch interval (minutes)"
+                      title={HELP_TEXT.feedInterval}
+                      disabled={!selectedSection}
+                    />
+                    <div className="button-row">
+                      <button type="button" onClick={() => void testFeed()} disabled={!selectedSection || feedTest.status === 'testing'} title={HELP_TEXT.testFeed}>Test feed</button>
+                      <button type="button" onClick={() => void addFeed()} disabled={!selectedSection || feedTest.status !== 'ok' || feedTest.url !== feedUrl.trim()} title={HELP_TEXT.addFeed}>Add feed</button>
+                    </div>
+                  </div>
+                  {feedTest.message ? <p className={feedTest.status === 'error' ? 'form-message error' : 'form-message'}>{feedTest.message}</p> : null}
                 </div>
               </div>
-              {feedTest.message ? <p className={feedTest.status === 'error' ? 'form-message error' : 'form-message'}>{feedTest.message}</p> : null}
             </div>
 
-            <div className="manager-block">
-              <h2>Layout</h2>
-              <div className="segmented">
-                {(['stack', 'columns', 'mosaic', 'focus'] as LayoutModeWire[]).map((mode) => (
-                  <button key={mode} type="button" className={layout.mode === mode ? 'selected' : ''} onClick={() => void persistLayout({ ...layout, mode })}>{mode}</button>
-                ))}
-              </div>
-              <button type="button" onClick={() => void resetLayout()}>Reset layout</button>
-            </div>
-
-            <div className="manager-block">
-              <h2>Appearance</h2>
-              <label className="theme-picker">
-                <span>App colour scheme</span>
-                <select
-                  aria-label="App colour scheme"
-                  value={colorScheme.id}
-                  onChange={(event) => {
-                    const theme = event.currentTarget.value as ColorSchemeId;
-                    void updateColorScheme(theme).catch((err) => setError(err instanceof Error ? err.message : String(err)));
-                  }}
+            {selectedSection ? (
+              <div className={managerDetailsOpen ? 'manager-pane manager-bottom-pane open' : 'manager-pane manager-bottom-pane collapsed'}>
+                <button
+                  type="button"
+                  className="manager-pane-toggle"
+                  onClick={() => setManagerDetailsOpen((open) => !open)}
+                  aria-expanded={managerDetailsOpen}
+                  aria-label={managerDetailsOpen ? 'Collapse section tools' : 'Expand section tools'}
                 >
-                  {COLOR_SCHEMES.map((scheme) => <option key={scheme.id} value={scheme.id}>{scheme.label}</option>)}
-                </select>
-              </label>
-              <div className="theme-swatches" aria-hidden="true">
-                {colorScheme.colors.map((color, index) => <span key={index} style={{ backgroundColor: color }} />)}
-                <span style={{ backgroundColor: colorScheme.margin }} />
-              </div>
-              <div className="segmented">
-                {(['solid', 'gradient', 'image'] as SectionAppearanceWire['mode'][]).map((mode) => (
-                  <button key={mode} type="button" className={appearance.mode === mode ? 'selected' : ''} onClick={() => void updateAppearance({ ...appearance, mode })}>{mode}</button>
-                ))}
-              </div>
-              <label>Solid <input type="color" value={appearance.solid || '#161b22'} onChange={(event) => void updateAppearance({ ...appearance, mode: 'solid', solid: event.target.value })} /></label>
-              <label>Gradient from <input type="color" value={appearance.gradientFrom || '#243447'} onChange={(event) => void updateAppearance({ ...appearance, mode: 'gradient', gradientFrom: event.target.value })} /></label>
-              <label>Gradient to <input type="color" value={appearance.gradientTo || '#14532d'} onChange={(event) => void updateAppearance({ ...appearance, mode: 'gradient', gradientTo: event.target.value })} /></label>
-              <label>Picture <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => {
-                const file = event.currentTarget.files?.[0];
-                if (file) void readImageAsDataUrl(file).then((imageDataUrl) => updateAppearance({ ...appearance, mode: 'image', imageDataUrl })).catch((err) => setError(err instanceof Error ? err.message : String(err)));
-              }} /></label>
-            </div>
+                  {managerDetailsOpen ? <ChevronDownIcon aria-hidden="true" /> : <ChevronUpIcon aria-hidden="true" />}
+                  <span>{selectedSection.name} tools</span>
+                </button>
+                {managerDetailsOpen ? (
+                  <div className="manager-pane-scroll manager-bottom-scroll">
+                    <div className="manager-block">
+                      <h2>Layout</h2>
+                      <div className="segmented">
+                        {(['stack', 'mosaic'] as LayoutModeWire[]).map((mode) => (
+                          <button key={mode} type="button" className={layout.mode === mode ? 'selected' : ''} onClick={() => void persistLayout({ ...layout, mode })}>{mode}</button>
+                        ))}
+                      </div>
+                      <button type="button" onClick={() => void resetLayout()}>Reset layout</button>
+                    </div>
 
-            <div className="manager-block">
-              <h2>Data and diagnostics</h2>
-              <div className="button-row wrap">
-                <button type="button" onClick={() => void exportSubscriptions()}>Export OPML</button>
-                <label className="file-button">Import OPML<input type="file" accept=".opml,.xml,text/xml" onChange={(event) => {
-                  const file = event.currentTarget.files?.[0];
-                  if (file) void importSubscriptions(file).catch((err) => setError(err instanceof Error ? err.message : String(err)));
-                  event.currentTarget.value = '';
-                }} /></label>
-                <button type="button" onClick={() => void exportBackup()}>Back up database</button>
-                <button type="button" onClick={() => void exportDiagnosticBundle()}>Export diagnostics</button>
+                    <div className="manager-block">
+                      <h2>Appearance</h2>
+                      <label className="theme-picker">
+                        <span>App colour scheme</span>
+                        <select
+                          aria-label="App colour scheme"
+                          value={colorScheme.id}
+                          onChange={(event) => {
+                            const theme = event.currentTarget.value as ColorSchemeId;
+                            void updateColorScheme(theme).catch((err) => setError(err instanceof Error ? err.message : String(err)));
+                          }}
+                        >
+                          {COLOR_SCHEMES.map((scheme) => <option key={scheme.id} value={scheme.id}>{scheme.label}</option>)}
+                        </select>
+                      </label>
+                      <div className="theme-swatches" aria-hidden="true">
+                        {colorScheme.colors.map((color, index) => <span key={index} style={{ backgroundColor: color }} />)}
+                        <span style={{ backgroundColor: colorScheme.margin }} />
+                      </div>
+                      <AppearanceEditor
+                        key={selectedSection.key}
+                        sectionKey={selectedSection.key}
+                        appearance={appearance}
+                        onApply={updateAppearanceForSection}
+                        onError={setTransientError}
+                      />
+                    </div>
+
+                    <div className="manager-block">
+                      <h2>Data and diagnostics</h2>
+                      <div className="button-row wrap">
+                        <button type="button" onClick={() => void exportSubscriptions()}>Export OPML</button>
+                        <label className="file-button">Import OPML<input type="file" accept=".opml,.xml,text/xml" onChange={(event) => {
+                          const file = event.currentTarget.files?.[0];
+                          if (file) void importSubscriptions(file).catch((err) => setError(err instanceof Error ? err.message : String(err)));
+                          event.currentTarget.value = '';
+                        }} /></label>
+                        <button type="button" onClick={() => void exportBackup()}>Back up database</button>
+                        <button type="button" onClick={() => void exportDiagnosticBundle()}>Export diagnostics</button>
+                      </div>
+                      {dataMessage ? <p className="form-message" aria-live="polite">{dataMessage}</p> : null}
+                    </div>
+                  </div>
+                ) : null}
               </div>
-              {dataMessage ? <p className="form-message" aria-live="polite">{dataMessage}</p> : null}
-            </div>
+            ) : null}
           </aside>
         ) : null}
 
@@ -658,6 +759,8 @@ export function AppShell() {
                   warning={state.warning}
                   progress={syncProgress[section.id] ?? globalProgress}
                   appearance={layout.appearance?.[section.key]}
+                  dayWindow={layout.dayWindows?.[section.key]}
+                  onDayWindowChange={(sectionKey, days) => void updateSectionDayWindow(sectionKey, days)}
                   onRefresh={(sectionId) => void refreshSection(sectionId)}
                   onMarkSeen={(sectionId) => void markSectionSeen(sectionId)}
                   openExternalItem={(sectionId, item) => void openItem(sectionId, item)}

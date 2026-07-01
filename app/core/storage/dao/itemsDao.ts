@@ -121,11 +121,12 @@ export function toggleItemImportant(db: Database.Database, itemId: number): 0 | 
 export function getItemsBySection(
   db: Database.Database,
   sectionId: number,
-  opts?: { includeSeen?: boolean; limit?: number; before?: string | null; query?: string; feedId?: number; importantOnly?: boolean; unreadOnly?: boolean; publishedAfter?: string | null; publishedBefore?: string | null }
+  opts?: { includeSeen?: boolean; all?: boolean; limit?: number; before?: string | null; query?: string; feedId?: number; importantOnly?: boolean; unreadOnly?: boolean; publishedAfter?: string | null; publishedBefore?: string | null }
 ) {
   const includeSeen = opts?.includeSeen ?? false;
-  const limit = Math.max(1, Math.min(200, opts?.limit ?? 50));
+  const limit = opts?.all ? null : Math.max(1, Math.min(200, opts?.limit ?? 50));
   const clauses: string[] = [];
+  const itemTime = `CASE WHEN i.published_at GLOB '????-??-??T??:??:??*' THEN i.published_at ELSE i.created_at END`;
   if (sectionId > 0) {
     clauses.push(`i.feed_id IN (SELECT fs.feed_id FROM feed_sections fs WHERE fs.section_id=@sectionId)`);
   }
@@ -133,9 +134,9 @@ export function getItemsBySection(
   if (opts?.unreadOnly) clauses.push(`COALESCE(s.is_read, 0) = 0`);
   if (opts?.importantOnly) clauses.push(`COALESCE(s.is_important, 0) = 1`);
   if (opts?.feedId) clauses.push(`i.feed_id = @feedId`);
-  if (opts?.before) clauses.push(`COALESCE(i.published_at, i.created_at) < @before`);
-  if (opts?.publishedAfter) clauses.push(`COALESCE(i.published_at, i.created_at) >= @publishedAfter`);
-  if (opts?.publishedBefore) clauses.push(`COALESCE(i.published_at, i.created_at) <= @publishedBefore`);
+  if (opts?.before) clauses.push(`${itemTime} < @before`);
+  if (opts?.publishedAfter) clauses.push(`${itemTime} >= @publishedAfter`);
+  if (opts?.publishedBefore) clauses.push(`${itemTime} <= @publishedBefore`);
   if (opts?.query?.trim()) clauses.push(`(LOWER(COALESCE(i.title, '')) LIKE @queryLike OR LOWER(COALESCE(i.description, '')) LIKE @queryLike OR LOWER(COALESCE(f.title, '')) LIKE @queryLike)`);
   const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
 
@@ -148,11 +149,12 @@ export function getItemsBySection(
      JOIN feeds f ON f.id = i.feed_id
      LEFT JOIN item_state s ON s.item_id = i.id
      ${where}
-     ORDER BY COALESCE(i.published_at, i.created_at) DESC
-     LIMIT @limit`
+     ORDER BY ${itemTime} DESC, i.id DESC
+     ${limit === null ? '' : 'LIMIT @limit'}`
   );
 
-  const parameters: Record<string, string | number> = { limit };
+  const parameters: Record<string, string | number> = {};
+  if (limit !== null) parameters.limit = limit;
   if (sectionId > 0) parameters.sectionId = sectionId;
   if (opts?.before) parameters.before = opts.before;
   if (opts?.feedId) parameters.feedId = opts.feedId;

@@ -62,7 +62,7 @@ function appearanceValue(value: unknown, name: string) {
   const mode = stringValue(value.mode, `${name}.mode`, { min: 1, max: 16 });
   if (!['solid', 'gradient', 'image'].includes(mode)) throw new Error(`${name}.mode is invalid`);
   const imageDataUrl = value.imageDataUrl === undefined ? undefined : stringValue(value.imageDataUrl, `${name}.imageDataUrl`, { min: 1, max: 2_500_000 });
-  if (imageDataUrl !== undefined && !/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(imageDataUrl)) {
+  if (imageDataUrl !== undefined && !/^data:image\/(png|jpe?g|webp|gif|avif);base64,/i.test(imageDataUrl)) {
     throw new Error(`${name}.imageDataUrl must be an image data URL`);
   }
   return {
@@ -76,7 +76,7 @@ function appearanceValue(value: unknown, name: string) {
 
 export function layoutValue(value: unknown) {
   const obj = optionalPayload(value);
-  rejectUnknown(obj, ['mode', 'theme', 'panels', 'appearance'], 'layout');
+  rejectUnknown(obj, ['mode', 'theme', 'panels', 'appearance', 'dayWindows'], 'layout');
   const panels = obj.panels;
   if (!Array.isArray(panels)) throw new Error('layout.panels must be an array');
   const mode = obj.mode === undefined ? undefined : stringValue(obj.mode, 'layout.mode', { min: 1, max: 16 });
@@ -89,6 +89,16 @@ export function layoutValue(value: unknown) {
     for (const [key, raw] of Object.entries(obj.appearance)) {
       if (!/^[a-zA-Z0-9_-]{1,128}$/.test(key)) throw new Error('layout.appearance key is invalid');
       appearance[key] = appearanceValue(raw, `layout.appearance.${key}`);
+    }
+  }
+  const dayWindows: Record<string, number | null> = {};
+  if (obj.dayWindows !== undefined) {
+    assertPlainObject(obj.dayWindows, 'layout.dayWindows');
+    for (const [key, raw] of Object.entries(obj.dayWindows)) {
+      if (!/^[a-zA-Z0-9_-]{1,128}$/.test(key)) throw new Error('layout.dayWindows key is invalid');
+      dayWindows[key] = raw === null
+        ? null
+        : numberValue(raw, `layout.dayWindows.${key}`, { integer: true, min: 1, max: 3650 });
     }
   }
   return {
@@ -106,6 +116,7 @@ export function layoutValue(value: unknown) {
       };
     }),
     appearance,
+    dayWindows,
   };
 }
 

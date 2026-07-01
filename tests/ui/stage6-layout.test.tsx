@@ -27,13 +27,13 @@ function makeApi(initialLayout: LayoutWire) {
     addFeedToSection: vi.fn(async () => ({ changed: 0 })),
     updateFeed: vi.fn(async () => ({ changed: 0 })),
     removeFeedFromSection: vi.fn(async () => ({ changed: 0 })),
-    testFeed: vi.fn(async () => ({ status: 'ok' })),
-    syncTrigger: vi.fn(async () => ({ status: 'ok', scope: 'all', requested: 0, triggered: 0, ok: 0, notModified: 0, errors: 0, newItems: 0, results: [] })),
+    testFeed: vi.fn(async () => ({ status: 'ok' as const })),
+    syncTrigger: vi.fn(async () => ({ status: 'ok' as const, scope: 'all' as const, requested: 0, triggered: 0, ok: 0, notModified: 0, errors: 0, newItems: 0, results: [] })),
     queryItems: vi.fn(async () => ({ items: [] })),
     markItemsSeen: vi.fn(async () => ({ changed: 0 })),
     markSectionSeen: vi.fn(async () => ({ changed: 0 })),
     markItemRead: vi.fn(async () => ({ changed: 0 })),
-    toggleItemImportant: vi.fn(async () => ({ is_important: 1 })),
+    toggleItemImportant: vi.fn(async () => ({ is_important: 1 as const })),
     queryImportant: vi.fn(async () => ({ items: [] })),
     getLayout: vi.fn(async () => ({ layout })),
     setLayout: vi.fn(async ({ layout: next }) => {
@@ -83,6 +83,13 @@ async function selectOption(label: string, value: string) {
   await flush();
 }
 
+async function selectSection(name: string) {
+  const button = Array.from(document.querySelectorAll<HTMLButtonElement>('.section-tile'))
+    .find((node) => node.querySelector('strong')?.textContent === name);
+  expect(button).toBeTruthy();
+  await act(async () => button!.click());
+  await flush();
+}
 describe('Stage 6 renderer layout controls', () => {
   let root: Root;
   let api: PreloadApi;
@@ -98,6 +105,20 @@ describe('Stage 6 renderer layout controls', () => {
     vi.restoreAllMocks();
   });
 
+  it('keeps section tools hidden until a translucent section tile is selected', async () => {
+    await click('Manage');
+    expect(document.querySelector('.manager-top-pane')).toBeTruthy();
+    expect(document.querySelector('.manager-bottom-pane')).toBeNull();
+
+    await selectSection('Tech');
+    const selected = document.querySelector('.section-tile.selected') as HTMLButtonElement;
+    expect(selected.getAttribute('aria-pressed')).toBe('true');
+    expect(selected.querySelector('strong')?.textContent).toBe('Tech');
+    expect(document.querySelector('.manager-bottom-pane.open')).toBeTruthy();
+
+    await click('Tech tools');
+    expect(document.querySelector('.manager-bottom-pane.collapsed')).toBeTruthy();
+  });
   it('updates panel width during resize and persists it on release', async () => {
     const handle = document.querySelector('[aria-label="Resize Tech"]') as HTMLElement;
     const techShell = document.querySelector('[data-panel-id="tech"]') as HTMLElement;
@@ -130,6 +151,7 @@ describe('Stage 6 renderer layout controls', () => {
     expect(techSection.style.backgroundImage).toContain('data:image/png');
 
     await click('Manage');
+    await selectSection('Tech');
     await click('Reset layout');
 
     expect(api.setLayout).toHaveBeenLastCalledWith(expect.objectContaining({
@@ -152,21 +174,68 @@ describe('Stage 6 renderer layout controls', () => {
     expect(css).toContain('.resize-handle { display: none; }');
   });
 
-  it('applies and persists a color scheme without refreshing application data', async () => {
+  it('exposes only the READIT theme without refreshing application data', async () => {
     await click('Manage');
+    await selectSection('Tech');
     const listCalls = vi.mocked(api.listSections).mock.calls.length;
     const queryCalls = vi.mocked(api.queryItems).mock.calls.length;
+    const themeSelect = document.querySelector('select[aria-label="App colour scheme"]') as HTMLSelectElement;
 
-    await selectOption('App colour scheme', 'warm');
+    expect([...themeSelect.options].map((option) => option.value)).toEqual(['readit']);
+    await selectOption('App colour scheme', 'readit');
 
-    expect(document.documentElement.dataset.colorScheme).toBe('warm');
-    expect(document.documentElement.style.getPropertyValue('--manager-bg')).toBe('#e0d5b0');
-    expect(api.setLayout).toHaveBeenCalledTimes(1);
+    expect(document.documentElement.dataset.colorScheme).toBe('readit');
+    expect(document.documentElement.style.getPropertyValue('--manager-bg')).toBe('#111821');
     expect(api.setLayout).toHaveBeenCalledWith(expect.objectContaining({
-      layout: expect.objectContaining({ theme: 'warm' }),
+      layout: expect.objectContaining({ theme: 'readit' }),
     }));
     expect(vi.mocked(api.listSections).mock.calls).toHaveLength(listCalls);
     expect(vi.mocked(api.queryItems).mock.calls).toHaveLength(queryCalls);
     expect(api.syncTrigger).not.toHaveBeenCalled();
+  });
+
+  it('implements mosaic as two columns with an odd full-width tail', async () => {
+    await click('Manage');
+    await selectSection('Tech');
+    await click('mosaic');
+
+    expect(document.querySelector('.layout-mosaic')).toBeTruthy();
+    expect(api.setLayout).toHaveBeenCalledWith(expect.objectContaining({
+      layout: expect.objectContaining({ mode: 'mosaic' }),
+    }));
+    const css = fs.readFileSync(path.resolve(process.cwd(), 'app', 'renderer', 'styles', 'app.css'), 'utf8');
+    expect(css).toContain('grid-template-columns: repeat(2, minmax(0, 1fr))');
+    expect(css).toContain('.layout-mosaic .section-shell:last-child:nth-child(odd)');
+    expect([...document.querySelectorAll('.segmented button')].some((button) => button.textContent === 'columns')).toBe(false);
+  });
+  it('dismisses appearance validation errors after the fixed alert interval', async () => {
+    await click('Manage');
+    await selectSection('Tech');
+    await click('solid');
+    const input = document.querySelector('input[placeholder^="#151b24"]') as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+    await act(async () => {
+      setter?.call(input, 'invalid');
+      input.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    });
+
+    vi.useFakeTimers();
+    try {
+      await click('OK');
+      expect(document.querySelector('.app-error')?.textContent).toContain('valid hex or rgb');
+      await act(async () => vi.advanceTimersByTime(6000));
+      expect(document.querySelector('.app-error')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it('persists a day window by stable section key without querying items', async () => {
+    const queryCalls = vi.mocked(api.queryItems).mock.calls.length;
+    await selectOption('Tech news window', '14');
+
+    expect(api.setLayout).toHaveBeenCalledWith(expect.objectContaining({
+      layout: expect.objectContaining({ dayWindows: { tech: 14 } }),
+    }));
+    expect(vi.mocked(api.queryItems).mock.calls).toHaveLength(queryCalls);
   });
 });

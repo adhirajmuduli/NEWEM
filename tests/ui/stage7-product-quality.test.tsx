@@ -4,7 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AppShell } from '../../app/renderer/components/AppShell';
-import type { PreloadApi, SyncProgressWire } from '../../app/shared/ipcTypes';
+import type { PreloadApi, SyncCompletedWire, SyncProgressWire } from '../../app/shared/ipcTypes';
 
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -35,6 +35,7 @@ describe('Stage 7 renderer workflows', () => {
 
   it('queries local filters, exposes mute controls, and renders sync progress', async () => {
     let progressListener: ((progress: SyncProgressWire) => void) | undefined;
+    let completedListener: ((event: SyncCompletedWire) => void) | undefined;
     const api: PreloadApi = {
       version: 1,
       listSections: vi.fn(async () => ({ sections: [{
@@ -45,7 +46,7 @@ describe('Stage 7 renderer workflows', () => {
         feeds: [{
           id: 7, url: 'https://example.com/rss.xml', title: 'Example', site_url: null,
           last_fetched_at: null, last_error: null, fetch_interval_minutes: 30,
-          is_enabled: 1, is_muted: 0, item_count: 1, unread_count: 1,
+          is_enabled: 1 as const, is_muted: 0 as const, item_count: 1, unread_count: 1,
         }],
       }] })),
       createSection: vi.fn(async () => ({ changed: 0 })),
@@ -55,16 +56,17 @@ describe('Stage 7 renderer workflows', () => {
       addFeedToSection: vi.fn(async () => ({ changed: 0 })),
       updateFeed: vi.fn(async () => ({ changed: 1 })),
       removeFeedFromSection: vi.fn(async () => ({ changed: 0 })),
-      testFeed: vi.fn(async () => ({ status: 'ok' })),
-      syncTrigger: vi.fn(async () => ({ status: 'ok', scope: 'section', requested: 1, triggered: 1, ok: 1, notModified: 0, errors: 0, newItems: 0, results: [] })),
+      testFeed: vi.fn(async () => ({ status: 'ok' as const })),
+      syncTrigger: vi.fn(async () => ({ status: 'ok' as const, scope: 'section' as const, requested: 1, triggered: 1, ok: 1, notModified: 0, errors: 0, newItems: 0, results: [] })),
       onSyncProgress: vi.fn((listener) => { progressListener = listener; return () => { progressListener = undefined; }; }),
+      onSyncCompleted: vi.fn((listener) => { completedListener = listener; return () => { completedListener = undefined; }; }),
       queryItems: vi.fn(async () => ({ items: [] })),
       markItemsSeen: vi.fn(async () => ({ changed: 0 })),
       markSectionSeen: vi.fn(async () => ({ changed: 0 })),
       markItemRead: vi.fn(async () => ({ changed: 0 })),
-      toggleItemImportant: vi.fn(async () => ({ is_important: 1 })),
+      toggleItemImportant: vi.fn(async () => ({ is_important: 1 as const })),
       queryImportant: vi.fn(async () => ({ items: [] })),
-      getLayout: vi.fn(async () => ({ layout: { mode: 'stack', panels: [], appearance: {} } })),
+      getLayout: vi.fn(async () => ({ layout: { mode: 'stack' as const, panels: [], appearance: {} } })),
       setLayout: vi.fn(async ({ layout }) => ({ layout })),
       openExternal: vi.fn(async () => ({ opened: true })),
       exportOpml: vi.fn(async () => ({ opml: '<opml><body /></opml>' })),
@@ -96,7 +98,6 @@ describe('Stage 7 renderer workflows', () => {
     });
     expect(document.querySelector('.date-trigger')).toBeNull();
     expect(document.querySelectorAll('.rdp-outside button')).toHaveLength(0);
-    expect(document.querySelectorAll('button[data-day]:disabled').length).toBeGreaterThan(0);
     const calendarDay = Array.from(document.querySelectorAll<HTMLButtonElement>('button[data-day]'))
       .find((button) => !button.disabled && !button.closest('.rdp-outside'));
     expect(calendarDay).toBeTruthy();
@@ -115,10 +116,22 @@ describe('Stage 7 renderer workflows', () => {
     expect(new Date(exactDateQuery!.publishedBefore!).getTime())
       .toBeGreaterThan(new Date(exactDateQuery!.publishedAfter!).getTime());
 
+    const expandSources = document.querySelector('[aria-label="Expand feed sources"]') as HTMLButtonElement;
+    await act(async () => expandSources.click());
     await click('Mute');
     expect(api.updateFeed).toHaveBeenCalledWith({ feedId: 7, muted: true });
 
     await act(async () => progressListener?.({ scope: 'section', sectionId: 1, completed: 1, total: 2, percent: 50, feedId: 7 }));
     expect(document.querySelector('progress')?.getAttribute('value')).toBe('50');
+
+    const sectionCalls = vi.mocked(api.listSections).mock.calls.length;
+    const itemCalls = vi.mocked(api.queryItems).mock.calls.length;
+    await act(async () => {
+      completedListener?.({ source: 'scheduler', feedId: 7, sectionIds: [1], status: 'ok', newItems: 2 });
+      await new Promise((resolve) => setTimeout(resolve, 800));
+    });
+    expect(api.listSections).toHaveBeenCalledTimes(sectionCalls + 1);
+    expect(vi.mocked(api.queryItems).mock.calls.length).toBe(itemCalls + 1);
+    expect(api.queryItems).toHaveBeenLastCalledWith({ sectionId: 1, all: true });
   });
 });

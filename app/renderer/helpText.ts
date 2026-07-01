@@ -1,0 +1,16 @@
+export const HELP_TEXT = {
+  manage: 'Manage sections, feeds, layout, appearance, and local data.',
+  refreshAll: 'Refresh every enabled, unmuted feed now.',
+  exitApplication: 'Exit the application.',
+  feedUrl: 'Enter an RSS or Atom feed URL, or a website that advertises one.',
+  feedInterval: 'Regularly refresh this feed after this many minutes. Suggested: 30 minutes.',
+  testFeed: 'Validate the address and discover its RSS or Atom endpoint before adding it.',
+  addFeed: 'Add the successfully tested feed to the selected section.',
+  markRead: 'Important: marks every article currently stored in this section as read and removes it from the unread view.',
+  refreshSection: 'Refresh every enabled, unmuted feed in this section now.',
+  newsWindow: 'Show articles published within this many days. Stored articles are not deleted.',
+  sourceInterval: 'Automatically refresh this source after this many minutes. Suggested: 30 minutes.',
+  muteFeed: 'Muted feeds remain configured but are excluded from automatic and manual refreshes.',
+  disableFeed: 'Disabled feeds remain configured but are excluded from refreshes.',
+  removeFeed: 'Remove this feed from the current section. The shared source and stored articles are retained if used elsewhere.',
+} as const;

@@ -37,6 +37,7 @@ export type SyncItemResult = {
   error?: { code: string; message: string };
 };
 export type SyncProgressWire = { scope: 'feed' | 'section' | 'all'; sectionId?: number; completed: number; total: number; percent: number; feedId?: number };
+export type SyncCompletedWire = { source: 'scheduler'; feedId: number; sectionIds: number[]; status: 'ok' | 'not_modified' | 'error'; newItems: number };
 
 export type SyncTriggerResponse = {
   status: 'ok';
@@ -82,6 +83,7 @@ export type LayoutWire = {
   theme?: ColorSchemeId;
   panels: Array<{ id: string; x: number; y: number; w: number; h: number }>;
   appearance?: Record<string, SectionAppearanceWire>;
+  dayWindows?: Record<string, number | null>;
 };
 
 export type SectionsListResponse = { sections: SectionWire[] };
@@ -98,8 +100,9 @@ export type FeedRemoveFromSectionPayload = { sectionId: number; feedId: number }
 export type FeedTestPayload = { url: string };
 export type FeedMutationResponse = { feed?: FeedWire; changed: number };
 export type FeedTestResponse = { status: 'ok' | 'error'; feedUrl?: string; discovered?: boolean; title?: string | null; site_url?: string | null; error?: { code: string; message: string } };
+export type ApplicationQuitResponse = { closing: true };
 
-export type ItemsQueryPayload = { sectionId: number; limit?: number; before?: string | null; includeSeen?: boolean; query?: string; feedId?: number; importantOnly?: boolean; unreadOnly?: boolean; publishedAfter?: string | null; publishedBefore?: string | null };
+export type ItemsQueryPayload = { sectionId: number; all?: boolean; limit?: number; before?: string | null; includeSeen?: boolean; query?: string; feedId?: number; importantOnly?: boolean; unreadOnly?: boolean; publishedAfter?: string | null; publishedBefore?: string | null };
 export type ItemsQueryResponse = { items: ItemWire[] };
 export type MarkItemsSeenPayload = { itemIds: number[] };
 export type MarkItemsSeenResponse = { changed: number };
@@ -135,6 +138,7 @@ export interface PreloadApi {
   testFeed(payload: FeedTestPayload): Promise<FeedTestResponse>;
   syncTrigger(payload?: SyncTriggerPayload): Promise<SyncTriggerResponse>;
   onSyncProgress(listener: (progress: SyncProgressWire) => void): () => void;
+  onSyncCompleted?(listener: (event: SyncCompletedWire) => void): () => void;
   queryItems(payload: ItemsQueryPayload): Promise<ItemsQueryResponse>;
   markItemsSeen(payload: MarkItemsSeenPayload): Promise<MarkItemsSeenResponse>;
   markSectionSeen(payload: MarkSectionSeenPayload): Promise<MarkSectionSeenResponse>;
@@ -148,4 +152,5 @@ export interface PreloadApi {
   importOpml(payload: OpmlImportPayload): Promise<OpmlImportResponse>;
   exportBackup(): Promise<BackupExportResponse>;
   exportDiagnostics(): Promise<DiagnosticsExportResponse>;
+  closeApplication?(): Promise<ApplicationQuitResponse>;
 }

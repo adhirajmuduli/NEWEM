@@ -184,9 +184,10 @@ function validateFeedTest(value: unknown): FeedTestPayload {
 
 function validateItemsQuery(value: unknown): ItemsQueryPayload {
   const payload = optionalPayload(value);
-  rejectUnknown(payload, ['sectionId', 'limit', 'before', 'includeSeen', 'query', 'feedId', 'importantOnly', 'unreadOnly', 'publishedAfter', 'publishedBefore'], 'payload');
+  rejectUnknown(payload, ['sectionId', 'all', 'limit', 'before', 'includeSeen', 'query', 'feedId', 'importantOnly', 'unreadOnly', 'publishedAfter', 'publishedBefore'], 'payload');
   return {
     sectionId: numberValue(payload.sectionId, 'payload.sectionId', { integer: true, min: -1 }),
+    all: optionalBoolean(payload.all, 'payload.all'),
     limit: optionalNumber(payload.limit, 'payload.limit', { integer: true, min: 1, max: 200 }),
     before: payload.before === null ? null : optionalString(payload.before, 'payload.before', { min: 1, max: 80 }),
     includeSeen: optionalBoolean(payload.includeSeen, 'payload.includeSeen'),
@@ -283,13 +284,21 @@ export function registerIpcHandlers(ipc: IpcMainLike) {
     const resolved = await resolveFeedInput(payload.url);
     if (resolved.status !== 'ok') throw new Error(resolved.error.message);
     const db = getDb();
-    const feed = createFeed(db, resolved.feedUrl);
-    if (payload.enabled !== undefined || payload.fetchIntervalMinutes !== undefined) {
-      updateFeedSettings(db, feed.id, { enabled: payload.enabled, fetchIntervalMinutes: payload.fetchIntervalMinutes });
-    }
-    assignFeedToSection(db, feed.id, payload.sectionId);
-    log.info('feed added', { feedId: feed.id, sectionId: payload.sectionId, discovered: resolved.discovered });
-    return { feed: feedWire(db, getFeed(db, feed.id) ?? feed), changed: 1 };
+    const result = db.transaction(() => {
+      const section = db.prepare('SELECT id FROM sections WHERE id=?').get(payload.sectionId);
+      if (!section) throw new Error(`Section ${payload.sectionId} does not exist`);
+      const created = createFeed(db, resolved.feedUrl, { title: resolved.title, siteUrl: resolved.site_url });
+      const feed = payload.enabled !== undefined || payload.fetchIntervalMinutes !== undefined
+        ? updateFeedSettings(db, created.id, {
+            enabled: payload.enabled,
+            fetchIntervalMinutes: payload.fetchIntervalMinutes,
+          }) ?? created
+        : created;
+      const changed = assignFeedToSection(db, feed.id, payload.sectionId);
+      return { feed, changed };
+    })();
+    log.info('feed added', { feedId: result.feed.id, sectionId: payload.sectionId, discovered: resolved.discovered, mappingCreated: result.changed === 1 });
+    return { feed: feedWire(db, result.feed), changed: result.changed };
   });
 
   handleValidated(ipc, 'feeds:update', validateFeedUpdate, passthroughResponse, (payload) => {
@@ -314,6 +323,17 @@ export function registerIpcHandlers(ipc: IpcMainLike) {
     };
   });
 
+  handleValidated(ipc, 'application:quit', (value) => {
+    const payload = optionalPayload(value);
+    rejectUnknown(payload, [], 'payload');
+    return {};
+  }, passthroughResponse, (_payload, event) => {
+    const owner = (event as { sender?: { getOwnerBrowserWindow?: () => { close(): void } | null } })
+      ?.sender?.getOwnerBrowserWindow?.();
+    setImmediate(() => owner?.close());
+    return { closing: true as const };
+  });
+
   handleValidated(ipc, 'sync:trigger', validateSyncTrigger, passthroughResponse, async (payload, event) => {
     const progress = (value: SyncProgress) =>
       sendSyncProgress(event, { ...value, ...(payload.sectionId ? { sectionId: payload.sectionId } : {}) });
@@ -326,7 +346,7 @@ export function registerIpcHandlers(ipc: IpcMainLike) {
     const db = getDb();
     const includeSeen = payload.includeSeen ?? getShowSeen(db);
     const items = getItemsBySection(db, payload.sectionId, {
-      includeSeen, limit: payload.limit, before: payload.before ?? null, query: payload.query, feedId: payload.feedId,
+      includeSeen, all: payload.all, limit: payload.limit, before: payload.before ?? null, query: payload.query, feedId: payload.feedId,
       importantOnly: payload.importantOnly, unreadOnly: payload.unreadOnly,
       publishedAfter: payload.publishedAfter ?? null, publishedBefore: payload.publishedBefore ?? null,
     });

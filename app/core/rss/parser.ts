@@ -22,7 +22,13 @@ const parser = new XMLParser({
 
 function stripHtml(input?: string | null): string | null {
   if (!input) return input ?? null;
-  return input.replace(/<[^>]*>/g, '').trim();
+  return input.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function normalizePublishedAt(value?: string): string | undefined {
+  if (!value) return undefined;
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? undefined : new Date(timestamp).toISOString();
 }
 
 function firstString(val: any): string | undefined {
@@ -70,7 +76,7 @@ export function parseFeed(xml: string): ParsedFeed {
           link,
           title: firstString(it.title) || undefined,
           description: stripHtml(firstString(it.description) || firstString(it.summary) || undefined) || undefined,
-          publishedAt: firstString(it.pubDate) || undefined,
+          publishedAt: normalizePublishedAt(firstString(it.pubDate)),
           sourceTitle: title || undefined,
         } as ParsedItem;
       })
@@ -92,7 +98,7 @@ export function parseFeed(xml: string): ParsedFeed {
           link,
           title: firstString(e.title) || undefined,
           description: stripHtml(firstString(e.summary) || firstString(e.content) || undefined) || undefined,
-          publishedAt: firstString(e.published) || firstString(e.updated) || undefined,
+          publishedAt: normalizePublishedAt(firstString(e.published) || firstString(e.updated)),
           sourceTitle: title || undefined,
         } as ParsedItem;
       })
