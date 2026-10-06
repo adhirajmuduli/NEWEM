@@ -1,5 +1,5 @@
 import fs from 'fs';
-import path from 'path';
+import { getRuntimePaths } from '../core/runtime/paths';
 
 export type CspDirectives = Record<string, string[]>;
 
@@ -27,7 +27,7 @@ function isDirectiveMap(value: unknown): value is CspDirectives {
   );
 }
 
-export function loadCspConfig(configPath = path.resolve(process.cwd(), 'config', 'csp.json')) {
+export function loadCspConfig(configPath = getRuntimePaths().cspConfigPath) {
   try {
     const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8')) as unknown;
     if (!isDirectiveMap(parsed)) return DEFAULT_CSP;

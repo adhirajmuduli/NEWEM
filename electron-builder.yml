@@ -1,0 +1,86 @@
+appId: com.readit.desktop
+productName: READIT
+copyright: Copyright (c) READIT Contributors
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+
+directories:
+  output: release
+  buildResources: assets
+
+asar: true
+asarUnpack:
+  - node_modules/better-sqlite3/build/Release/electron/**
+
+# READIT preserves separate Node and Electron ABI bindings itself.
+npmRebuild: false
+
+files:
+  - dist/**
+  - package.json
+  - "!**/*.map"
+  - "!dist/scripts/**"
+  - "!dist/app/core/storage/migrations/**"
+  - "!**/*.{ts,tsx,cts,mts}"
+  - "!tests/**"
+  - "!coverage/**"
+  - "!data/**"
+  - "!release/**"
+  - "!.git/**"
+  - "!.github/**"
+  - "!.vscode/**"
+  - "!docs/**"
+  - "!node_modules/better-sqlite3/build/Release/better_sqlite3.node"
+
+extraResources:
+  - from: config
+    to: config
+    filter:
+      - "*.json"
+  - from: dist/app/core/storage/migrations
+    to: migrations
+    filter:
+      - "*.sql"
+
+win:
+  icon: assets/sa-odia.ico
+  executableName: READIT
+  target:
+    - nsis
+    - portable
+
+nsis:
+  artifactName: ${productName}-Setup-${version}-${os}-${arch}.${ext}
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: READIT
+  uninstallDisplayName: READIT
+  runAfterFinish: true
+
+portable:
+  artifactName: ${productName}-Portable-${version}-${os}-${arch}.${ext}
+
+mac:
+  icon: assets/sa-odia.icns
+  category: public.app-category.news
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  target:
+    - dmg
+    - zip
+
+dmg:
+  artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+
+linux:
+  icon: assets/icons
+  executableName: readit
+  category: News
+  maintainer: READIT Contributors
+  synopsis: Local-first RSS and Atom desktop reader
+  description: Secure local-first RSS and Atom reader with configurable sections, search, layouts, and SQLite persistence.
+  target:
+    - AppImage
+    - deb

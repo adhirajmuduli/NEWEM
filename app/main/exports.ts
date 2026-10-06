@@ -2,9 +2,10 @@ import fs from 'fs';
 import path from 'path';
 import Database from 'better-sqlite3';
 import { getRecentLogs } from './logging';
+import { getRuntimePaths } from '../core/runtime/paths';
 
 function exportDirectory(baseDirectory?: string) {
-  const directory = baseDirectory || path.join(process.cwd(), 'data', 'exports');
+  const directory = baseDirectory || getRuntimePaths().exportDirectory;
   fs.mkdirSync(directory, { recursive: true });
   return directory;
 }

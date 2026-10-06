@@ -1,0 +1,56 @@
+name: Release build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+          - macos-latest
+          - ubuntu-latest
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.17.0
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Validate source
+        run: npm run validate
+      - name: Build current-platform distributables
+        run: npm run dist
+      - name: Verify packaged app
+        if: runner.os != 'Linux'
+        run: npm run verify:package
+      - name: Verify packaged app on Linux
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run verify:package
+      - name: Upload unsigned release artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: readit-${{ runner.os }}-${{ runner.arch }}
+          if-no-files-found: error
+          path: |
+            release/*.exe
+            release/*.dmg
+            release/*.zip
+            release/*.AppImage
+            release/*.deb
+            release/*.blockmap
+            release/*.yml
