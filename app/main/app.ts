@@ -1,12 +1,16 @@
 // Main process bootstrap: lifecycle, IPC, database readiness, window, and scheduler.
 declare const require: any;
 
-import { initDb } from '../core/storage/db';
+import fs from 'fs';
+import path from 'path';
+import { closeDb, initDb } from '../core/storage/db';
+import type { RuntimePaths } from '../core/runtime/paths';
 import { registerIpcHandlers } from './ipc';
 import { scheduler } from './scheduler';
 import { createMainWindow } from './windows';
 import { bootstrapApplication } from './bootstrap';
 import { logger, withModule } from './logging';
+import { configureElectronRuntimePaths } from './runtimePaths';
 
 const electron = (() => {
   try {
@@ -24,6 +28,13 @@ const log = withModule('app');
 
 let mainWindow: any | null = null;
 let removeSchedulerListener: (() => void) | null = null;
+const packageSmokeDirectory = process.env.READIT_PACKAGE_SMOKE_DIR
+  ? path.resolve(process.env.READIT_PACKAGE_SMOKE_DIR)
+  : null;
+
+if (app && packageSmokeDirectory) {
+  app.setPath('userData', packageSmokeDirectory);
+}
 
 function setupSingleInstanceLock() {
   const gotLock = app.requestSingleInstanceLock();
@@ -56,7 +67,38 @@ function showFatalStartupError(error: unknown) {
   app.quit();
 }
 
+function isWithin(base: string, target: string) {
+  const relative = path.relative(base, target);
+  return relative === '' || (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative));
+}
+
+function runPackageSmoke(paths: RuntimePaths) {
+  const db = initDb();
+  const migrations = (db.prepare('SELECT COUNT(*) AS count FROM schema_migrations').get() as { count: number }).count;
+  closeDb();
+  const reportPath = path.join(paths.dataDirectory, 'package-smoke.json');
+  fs.writeFileSync(reportPath, JSON.stringify({
+    ok: true,
+    packaged: paths.packaged,
+    electronVersion: process.versions.electron,
+    abi: process.versions.modules,
+    migrations,
+    dataDirectory: paths.dataDirectory,
+    migrationsDirectory: paths.migrationsDirectory,
+    cspConfigPath: paths.cspConfigPath,
+    dataInsideResources: isWithin(process.resourcesPath, paths.dataDirectory),
+    databaseExists: fs.existsSync(path.join(paths.dataDirectory, 'app.db')),
+  }, null, 2), 'utf8');
+  log.info('package_smoke_complete', { reportPath, migrations });
+  app.quit();
+}
+
 function onReady() {
+  const runtimePaths = configureElectronRuntimePaths(app);
+  if (packageSmokeDirectory) {
+    runPackageSmoke(runtimePaths);
+    return;
+  }
   removeSchedulerListener ??= scheduler.onSyncCompleted((event) => {
     for (const window of BrowserWindow?.getAllWindows?.() ?? []) {
       if (!window.isDestroyed()) window.webContents.send('sync:completed', event);

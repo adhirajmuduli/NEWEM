@@ -4,6 +4,7 @@ import Database from 'better-sqlite3';
 import { syncCatalogVersionIfNeeded } from './sectionsSync';
 import { ensureStorageContract } from './migrate';
 import { resolveElectronNativeBinding } from './nativeBinding';
+import { getRuntimePaths } from '../runtime/paths';
 
 let dbInstance: Database.Database | null = null;
 
@@ -12,7 +13,7 @@ function ensureDir(p: string) {
 }
 
 function migrationsDir() {
-  return path.join(__dirname, 'migrations');
+  return getRuntimePaths().migrationsDirectory;
 }
 
 function readMigration(name: string) {
@@ -53,10 +54,11 @@ export function applyMigrations(db: Database.Database) {
 
 export function initDb(dbPath?: string) {
   if (dbInstance) return dbInstance;
-  const base = dbPath || path.join(process.cwd(), 'data');
+  const runtimePaths = getRuntimePaths();
+  const base = dbPath || runtimePaths.dataDirectory;
   ensureDir(base);
   const file = path.join(base, 'app.db');
-  const nativeBinding = resolveElectronNativeBinding();
+  const nativeBinding = resolveElectronNativeBinding(runtimePaths.nativeModuleRoot);
   const db = new Database(file, nativeBinding ? { nativeBinding } : undefined);
   applyMigrations(db);
   syncCatalogVersionIfNeeded(db);
