@@ -1,25 +1,18 @@
 import Database from 'better-sqlite3';
 import type { ParsedItem } from './parser';
 import { computeDedupeKey } from './dedupe';
-import { assertValidFeedUrl } from './url';
+import {
+  createFeed,
+  getFeedByUrl as getFeedByUrlDao,
+  updateFeedCache as updateFeedCacheDao,
+  type Feed,
+} from '../storage/dao/feedsDao';
+import { insertItems as insertStoredItems, type NewItem } from '../storage/dao/itemsDao';
 
-export type FeedRow = {
-  id: number;
-  url: string;
-  title?: string | null;
-  site_url?: string | null;
-  etag?: string | null;
-  last_modified?: string | null;
-  last_fetched_at?: string | null;
-  last_error?: string | null;
-  is_enabled: number;
-  is_fetching?: number;
-};
+export type FeedRow = Feed;
 
 export function getFeedByUrl(db: Database.Database, url: string): FeedRow | null {
-  const normalized = assertValidFeedUrl(url);
-  const row = db.prepare(`SELECT * FROM feeds WHERE url = ?`).get(normalized);
-  return (row as FeedRow) ?? null;
+  return getFeedByUrlDao(db, url) ?? null;
 }
 
 export function upsertFeedMeta(
@@ -27,33 +20,7 @@ export function upsertFeedMeta(
   url: string,
   meta: { title?: string | null; site_url?: string | null }
 ): FeedRow {
-  const normalized = assertValidFeedUrl(url);
-  const existing = db.prepare(`SELECT * FROM feeds WHERE url = ?`).get(normalized) as FeedRow | undefined;
-
-  if (existing) {
-    db.prepare(
-      `UPDATE feeds
-       SET title = COALESCE(@title, title),
-           site_url = COALESCE(@site_url, site_url),
-           updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-       WHERE id = @id`
-    ).run({ id: existing.id, title: meta.title ?? null, site_url: meta.site_url ?? null });
-
-    return { ...existing, ...meta, url: normalized };
-  }
-
-  const res = db.prepare(
-    `INSERT INTO feeds (url, title, site_url, is_enabled)
-     VALUES (@url, @title, @site_url, 1)`
-  ).run({ url: normalized, title: meta.title ?? null, site_url: meta.site_url ?? null });
-
-  return {
-    id: Number(res.lastInsertRowid),
-    url: normalized,
-    title: meta.title ?? null,
-    site_url: meta.site_url ?? null,
-    is_enabled: 1,
-  };
+  return createFeed(db, url, { title: meta.title ?? null, siteUrl: meta.site_url ?? null });
 }
 
 export function updateFeedCache(
@@ -61,39 +28,19 @@ export function updateFeedCache(
   feedId: number,
   data: { etag?: string | null; lastModified?: string | null; error?: string | null }
 ) {
-  db.prepare(
-    `UPDATE feeds
-     SET etag = COALESCE(@etag, etag),
-         last_modified = COALESCE(@last_modified, last_modified),
-         last_fetched_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
-         last_error = @error,
-         is_fetching = 0,
-         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-     WHERE id = @id`
-  ).run({ id: feedId, etag: data.etag ?? null, last_modified: data.lastModified ?? null, error: data.error ?? null });
+  updateFeedCacheDao(db, feedId, data);
 }
 
 export function insertItems(db: Database.Database, feedId: number, items: ParsedItem[]): number {
-  const stmt = db.prepare(
-    `INSERT INTO items (feed_id, guid, link, title, description, published_at, dedupe_key)
-     VALUES (@feed_id, @guid, @link, @title, @description, @published_at, @dedupe_key)
-     ON CONFLICT(dedupe_key) DO NOTHING`
-  );
-
-  let inserted = 0;
-  for (const item of items) {
-    const res = stmt.run({
-      feed_id: feedId,
-      guid: item.guid ?? null,
-      link: item.link,
-      title: item.title ?? null,
-      description: item.description ?? null,
-      published_at: item.publishedAt ?? null,
-      dedupe_key: computeDedupeKey({ guid: item.guid, link: item.link, title: item.title }),
-    });
-    if (res.changes > 0) inserted += 1;
-  }
-  return inserted;
+  const rows: NewItem[] = items.map((item) => ({
+    guid: item.guid ?? null,
+    link: item.link,
+    title: item.title ?? null,
+    description: item.description ?? null,
+    published_at: item.publishedAt ?? null,
+    dedupe_key: computeDedupeKey({ guid: item.guid, link: item.link, title: item.title }),
+  }));
+  return insertStoredItems(db, feedId, rows);
 }
 
 export function logFetch(
@@ -102,7 +49,7 @@ export function logFetch(
     feedId?: number;
     status: string;
     httpStatus?: number | null;
-    durationMs?: number;
+    durationMs?: number | null;
     message?: string | null;
   }
 ) {

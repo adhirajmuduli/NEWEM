@@ -4,6 +4,7 @@ export type ColorSchemeDefinition = {
   colors: readonly [string, string, string, string, string];
   margin: string;
   gradient?: boolean;
+  border?: string;
 };
 
 const ALL_COLOR_SCHEMES = [
@@ -32,7 +33,19 @@ const ALL_COLOR_SCHEMES = [
   { id: 'neutral', label: 'Neutral', colors: ['#f5f5f5', '#e7e7e7', '#dcd7c9', '#b0a695', '#a3a3a3'], margin: '#715a5a' },
 ] as const satisfies readonly ColorSchemeDefinition[];
 
-export const COLOR_SCHEMES = [ALL_COLOR_SCHEMES[0]] as const;
+const PRODUCTION_COLOR_SCHEMES = [
+  { id: 'slate-indigo', label: 'Slate & Indigo', colors: ['#181b21', '#1c1f26', '#14161b', '#7c8cf8', '#17191f'], margin: '#14161b', border: '#2a2e37' },
+  { id: 'midnight-teal', label: 'Midnight Teal', colors: ['#131f21', '#162326', '#0f1a1c', '#4fb3a9', '#111d20'], margin: '#0f1a1c', border: '#223539' },
+  { id: 'graphite-amber', label: 'Graphite & Amber', colors: ['#1e1e21', '#222225', '#1a1a1c', '#d9a441', '#1d1d1f'], margin: '#1a1a1c', border: '#323236' },
+  { id: 'soft-blue-gray', label: 'Soft Blue-Gray', colors: ['#fafbfc', '#ffffff', '#f4f6f9', '#4f7cac', '#f8f9fb'], margin: '#f4f6f9', border: '#e1e6ee' },
+  { id: 'warm-paper', label: 'Warm Paper', colors: ['#f9f7f2', '#fbf9f5', '#f7f4ee', '#b5654a', '#f8f6f0'], margin: '#f7f4ee', border: '#e6e0d4' },
+  { id: 'sage-mist', label: 'Sage Mist', colors: ['#f7f8f6', '#fafbf9', '#f3f5f2', '#5e8c6a', '#f5f7f4'], margin: '#f3f5f2', border: '#dde3dc' },
+  { id: 'dusty-lavender', label: 'Dusty Lavender', colors: ['#fafafc', '#ffffff', '#f5f4f8', '#8a7cc2', '#f9f8fa'], margin: '#f5f4f8', border: '#e3e0eb' },
+  { id: 'stone-clay', label: 'Stone & Clay (Dark)', colors: ['#1e1d1c', '#222120', '#191817', '#c99580', '#1c1b1a'], margin: '#191817' },
+  { id: 'stone-clay-light', label: 'Stone & Clay (Light)', colors: ['#fbfaf9', '#ffffff', '#f6f5f3', '#a8715a', '#f9f9f7'], margin: '#f6f5f3' },
+] as const satisfies readonly ColorSchemeDefinition[];
+
+export const COLOR_SCHEMES = [ALL_COLOR_SCHEMES[0], ...PRODUCTION_COLOR_SCHEMES] as const;
 export const DISABLED_COLOR_SCHEMES = ALL_COLOR_SCHEMES.slice(1);
 
 export type ColorSchemeId = (typeof COLOR_SCHEMES)[number]['id'];
@@ -89,6 +102,7 @@ export function colorSchemeVariables(value: unknown): Record<`--${string}`, stri
   const controlText = contrastText(control);
   const canvasText = contrastText(scheme.margin);
   const isGradient = 'gradient' in scheme && scheme.gradient;
+  const border = 'border' in scheme && typeof scheme.border === 'string' ? scheme.border : null;
   return {
     '--bg': isGradient ? `linear-gradient(135deg, ${scheme.margin}, ${toolbar})` : scheme.margin,
     '--toolbar-bg': toolbar,
@@ -110,9 +124,9 @@ export function colorSchemeVariables(value: unknown): Record<`--${string}`, stri
     '--accent': control,
     '--accent-contrast': controlText,
     '--accent-2': mixColors(control, '#ffffff', 0.2),
-    '--border': mixColors(section, sectionText, 0.26),
-    '--manager-border': mixColors(manager, managerText, 0.26),
-    '--card-border': mixColors(card, cardText, 0.2),
+    '--border': border ?? mixColors(section, sectionText, 0.26),
+    '--manager-border': border ?? mixColors(manager, managerText, 0.26),
+    '--card-border': border ?? mixColors(card, cardText, 0.2),
     '--focus': contrastRatio(control, section) >= 3 ? control : sectionText,
     '--section-bg': isGradient ? `linear-gradient(135deg, ${section}, ${card})` : section,
   };

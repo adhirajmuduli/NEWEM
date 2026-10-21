@@ -43,10 +43,22 @@ describe('validated IPC handlers', () => {
     const handlers = setupHandlers();
     const created = await handlers.get('sections:create')!(null, { name: 'Security', key: 'security' }) as any;
     expect(created.changed).toBe(1);
+    expect(Object.keys(created.section).sort()).toEqual(['feeds', 'id', 'key', 'name', 'position_index']);
+    const duplicate = await handlers.get('sections:create')!(null, { name: 'Security', key: 'security' }) as any;
+    expect(duplicate).toMatchObject({ changed: 0, section: { id: created.section.id, name: 'Security' } });
+    await expect(handlers.get('sections:create')!(null, { name: 'SECURITY', key: 'security' })).rejects.toThrow(/already exists/);
     const layout = await handlers.get('layout:set')!(null, { layout: { theme: 'readit', panels: [{ id: 'security', x: 0, y: 0, w: 3, h: 2 }], dayWindows: { security: 7 } } }) as any;
     expect(layout.layout).toMatchObject({ theme: 'readit', panels: [{ id: 'security', w: 3 }], dayWindows: { security: 7 } });
     const allItems = await handlers.get('items:query')!(null, { sectionId: -1, all: true, includeSeen: true }) as any;
     expect(allItems.items).toEqual([]);
+  });
+
+  it('rejects section names that collide with an existing section key', async () => {
+    const handlers = setupHandlers();
+    await handlers.get('sections:create')!(null, { name: 'Tech' });
+    await expect(handlers.get('sections:create')!(null, { name: 'TECH' })).rejects.toThrow(/already exists/);
+    const sections = await handlers.get('sections:list')!(null, {}) as any;
+    expect(sections.sections.filter((section: any) => section.key === 'tech')).toHaveLength(1);
   });
 
   it('closes only the requesting Electron window through validated IPC', async () => {

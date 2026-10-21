@@ -137,6 +137,8 @@ if (!app) {
     removeSchedulerListener?.();
     removeSchedulerListener = null;
     log.info('scheduler_stopped');
+    closeDb();
+    log.info('database_closed');
   });
 
   app.on('window-all-closed', () => {

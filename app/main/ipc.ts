@@ -21,8 +21,10 @@ import {
   listFeedsForSection,
   listSections,
   reorderSections,
+  sectionKeyFromName,
   updateSection,
   unassignFeedFromSection,
+  type Section,
 } from '../core/storage/dao/sectionsDao';
 import { getItemsBySection, markSeen as markItemsSeen, markSectionSeen, ItemRow, markItemRead, toggleItemImportant } from '../core/storage/dao/itemsDao';
 import { getLayout, getShowSeen, setLayout } from '../core/storage/dao/settingsDao';
@@ -67,18 +69,37 @@ export type SyncTriggerResponse = ManualSyncResult;
 
 const log = withModule('ipc');
 
-function feedCounts(db: ReturnType<typeof getDb>, feedId: number) {
+type FeedCounts = { item_count: number; unread_count: number | null };
+
+function feedCounts(db: ReturnType<typeof getDb>, feedId: number): FeedCounts {
   return db.prepare(
     `SELECT COUNT(i.id) AS item_count,
             SUM(CASE WHEN COALESCE(s.is_read, 0) = 0 THEN 1 ELSE 0 END) AS unread_count
      FROM items i
      LEFT JOIN item_state s ON s.item_id = i.id
      WHERE i.feed_id = ?`
-  ).get(feedId) as { item_count: number; unread_count: number | null };
+  ).get(feedId) as FeedCounts;
 }
 
-function feedWire(db: ReturnType<typeof getDb>, feed: any) {
-  const counts = feedCounts(db, feed.id);
+function feedCountsForFeeds(db: ReturnType<typeof getDb>, feedIds: number[]): Map<number, FeedCounts> {
+  const counts = new Map<number, FeedCounts>();
+  if (feedIds.length === 0) return counts;
+  const placeholders = feedIds.map(() => '?').join(', ');
+  const rows = db.prepare(
+    `SELECT i.feed_id,
+            COUNT(i.id) AS item_count,
+            SUM(CASE WHEN COALESCE(s.is_read, 0) = 0 THEN 1 ELSE 0 END) AS unread_count
+     FROM items i
+     LEFT JOIN item_state s ON s.item_id = i.id
+     WHERE i.feed_id IN (${placeholders})
+     GROUP BY i.feed_id`
+  ).all(...feedIds) as Array<FeedCounts & { feed_id: number }>;
+  for (const row of rows) counts.set(row.feed_id, { item_count: row.item_count, unread_count: row.unread_count });
+  return counts;
+}
+
+function feedWire(db: ReturnType<typeof getDb>, feed: any, counts?: FeedCounts) {
+  const resolved = counts ?? feedCounts(db, feed.id);
   return {
     id: feed.id,
     url: feed.url,
@@ -89,18 +110,30 @@ function feedWire(db: ReturnType<typeof getDb>, feed: any) {
     fetch_interval_minutes: feed.fetch_interval_minutes ?? null,
     is_enabled: feed.is_enabled as 0 | 1,
     is_muted: (feed.is_muted ?? 0) as 0 | 1,
-    item_count: counts.item_count ?? 0,
-    unread_count: counts.unread_count ?? 0,
+    item_count: resolved.item_count ?? 0,
+    unread_count: resolved.unread_count ?? 0,
   };
 }
 
-function sectionWire(db: ReturnType<typeof getDb>, section: any) {
-  return { ...section, feeds: (listFeedsForSection(db, section.id) as any[]).map((feed) => feedWire(db, feed)) };
+function sectionWire(db: ReturnType<typeof getDb>, section: any, counts?: Map<number, FeedCounts>) {
+  const feeds = listFeedsForSection(db, section.id) as any[];
+  return {
+    id: section.id,
+    key: section.key,
+    name: section.name,
+    position_index: section.position_index,
+    feeds: feeds.map((feed) => feedWire(db, feed, counts?.get(feed.id))),
+  };
 }
 
 function listSectionsResponse() {
   const db = getDb();
-  return { sections: listSections(db).map((section) => sectionWire(db, section)) };
+  const sections = listSections(db);
+  const feedIds = sections.flatMap(
+    (section) => (listFeedsForSection(db, section.id) as Array<{ id: number }>).map((feed) => feed.id)
+  );
+  const counts = feedCountsForFeeds(db, feedIds);
+  return { sections: sections.map((section) => sectionWire(db, section, counts)) };
 }
 
 function validateSyncTrigger(value: unknown): SyncTriggerPayload {
@@ -260,6 +293,12 @@ export function registerIpcHandlers(ipc: IpcMainLike) {
 
   handleValidated(ipc, 'sections:create', validateSectionCreate, passthroughResponse, (payload) => {
     const db = getDb();
+    const stableKey = payload.key ?? sectionKeyFromName(payload.name);
+    const existing = db.prepare('SELECT * FROM sections WHERE key=?').get(stableKey) as Section | undefined;
+    if (existing) {
+      if (existing.name === payload.name) return { section: sectionWire(db, existing), changed: 0 };
+      throw new Error(`A section normalizing to key "${stableKey}" already exists`);
+    }
     const section = createSection(db, payload.name, payload.position, payload.key);
     return { section: sectionWire(db, section), changed: 1 };
   });
@@ -297,7 +336,7 @@ export function registerIpcHandlers(ipc: IpcMainLike) {
       const changed = assignFeedToSection(db, feed.id, payload.sectionId);
       return { feed, changed };
     })();
-    log.info('feed added', { feedId: result.feed.id, sectionId: payload.sectionId, discovered: resolved.discovered, mappingCreated: result.changed === 1 });
+    log.info('feed_added', { feedId: result.feed.id, sectionId: payload.sectionId, discovered: resolved.discovered, mappingCreated: result.changed === 1 });
     return { feed: feedWire(db, result.feed), changed: result.changed };
   });
 
@@ -383,7 +422,7 @@ export function registerIpcHandlers(ipc: IpcMainLike) {
   handleValidated(ipc, 'portability:exportOpml', () => ({}), passthroughResponse, () => ({ opml: exportOpml(getDb()) }));
   handleValidated(ipc, 'portability:importOpml', validateOpmlImport, passthroughResponse, (payload) => {
     const result = importOpml(getDb(), payload.opml, payload.sectionId);
-    log.info('OPML imported', result);
+    log.info('opml_imported', result);
     return result;
   });
   handleValidated(ipc, 'portability:backup', () => ({}), passthroughResponse, async () => ({

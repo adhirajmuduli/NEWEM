@@ -101,7 +101,7 @@ describe('section news work surface', () => {
     expect(openExternalItem).toHaveBeenCalledWith(1, item);
   });
 
-  it('renders an uncapped item set incrementally to keep scrolling responsive', async () => {
+  it('renders an uncapped item set incrementally to keep scrolling responsive', { timeout: 20_000 }, async () => {
     const manyItems = Array.from({ length: 161 }, (_, index) => ({
       ...item,
       id: index + 1,

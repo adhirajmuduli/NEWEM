@@ -1,9 +1,9 @@
 import Database from 'better-sqlite3';
 import { fetchFeed, type FetchFeedOptions, type FetchError } from './fetch';
 import { parseFeed } from './parser';
-import { getFeedByUrl, insertItems, logFetch, updateFeedCache, upsertFeedMeta } from './persist';
+import { insertItems, logFetch } from './persist';
 import { normalizeFeedUrl } from './url';
-import { getFeed, listFeeds, markFeedError, tryLockFeed } from '../storage/dao/feedsDao';
+import { createFeed, getFeed, getFeedByUrl, listFeeds, markFeedError, tryLockFeed, updateFeedCache } from '../storage/dao/feedsDao';
 import { listFeedsForSection } from '../storage/dao/sectionsDao';
 
 export type SyncStatus = 'ok' | 'not_modified' | 'error';
@@ -36,6 +36,10 @@ export type SyncProgress = { scope: ManualSyncScope; completed: number; total: n
 
 function messageForError(error: SyncResult['error']) {
   return error ? `${error.code}: ${error.message}` : null;
+}
+
+function preservedValidators(existing?: { etag?: string | null; last_modified?: string | null }) {
+  return { etag: existing?.etag ?? null, lastModified: existing?.last_modified ?? null };
 }
 
 function persistSyncResult(db: Database.Database, result: SyncResult, meta?: { etag?: string | null; lastModified?: string | null }) {
@@ -71,6 +75,17 @@ export async function syncFeedByUrl(
   }
   const normalizedUrl = normalized.url;
   const existing = getFeedByUrl(db, normalizedUrl);
+  if (existing && !tryLockFeed(db, existing.id)) {
+    return {
+      status: 'error',
+      feedId: existing.id,
+      url: feedUrl,
+      normalizedUrl,
+      httpStatus: null,
+      newItems: 0,
+      error: { code: 'feed_in_progress', message: `Feed ${existing.id} is already refreshing` },
+    };
+  }
   const res = await fetchFeed(normalizedUrl, {
     etag: existing?.etag ?? undefined,
     lastModified: existing?.last_modified ?? undefined,
@@ -87,7 +102,7 @@ export async function syncFeedByUrl(
       newItems: 0,
       error: res.error,
     };
-    db.transaction(() => persistSyncResult(db, result))();
+    db.transaction(() => persistSyncResult(db, result, preservedValidators(existing)))();
     return result;
   }
 
@@ -100,7 +115,10 @@ export async function syncFeedByUrl(
       httpStatus: res.httpStatus ?? 304,
       newItems: 0,
     };
-    db.transaction(() => persistSyncResult(db, result, { etag: res.etag, lastModified: res.lastModified }))();
+    db.transaction(() => persistSyncResult(db, result, {
+      etag: res.etag ?? existing?.etag ?? null,
+      lastModified: res.lastModified ?? existing?.last_modified ?? null,
+    }))();
     return result;
   }
 
@@ -114,14 +132,14 @@ export async function syncFeedByUrl(
       newItems: 0,
       error: { code: 'parse_error', message: 'Feed response was empty' },
     };
-    db.transaction(() => persistSyncResult(db, result))();
+    db.transaction(() => persistSyncResult(db, result, preservedValidators(existing)))();
     return result;
   }
 
   try {
     const parsed = parseFeed(res.body);
     const result = db.transaction(() => {
-      const feed = upsertFeedMeta(db, normalizedUrl, parsed.feed);
+      const feed = createFeed(db, normalizedUrl, { title: parsed.feed.title ?? null, siteUrl: parsed.feed.site_url ?? null });
       const inserted = insertItems(db, feed.id, parsed.items);
       const syncResult: SyncResult = {
         status: 'ok',
@@ -131,7 +149,7 @@ export async function syncFeedByUrl(
         httpStatus: res.httpStatus ?? 200,
         newItems: inserted,
       };
-      persistSyncResult(db, syncResult, { etag: res.etag, lastModified: res.lastModified });
+      persistSyncResult(db, syncResult, { etag: res.etag ?? null, lastModified: res.lastModified ?? null });
       return syncResult;
     })();
     return result;
@@ -145,7 +163,7 @@ export async function syncFeedByUrl(
       newItems: 0,
       error: { code: 'parse_error', message: error instanceof Error ? error.message : String(error) },
     };
-    db.transaction(() => persistSyncResult(db, result))();
+    db.transaction(() => persistSyncResult(db, result, preservedValidators(existing)))();
     return result;
   }
 }
@@ -183,17 +201,6 @@ export async function syncFeedById(db: Database.Database, feedId: number, opts?:
       httpStatus: null,
       newItems: 0,
       error: { code: 'feed_muted', message: `Feed ${feedId} is muted` },
-    } satisfies SyncResult;
-  }
-  if (!tryLockFeed(db, feedId)) {
-    return {
-      status: 'error',
-      feedId,
-      url: feed.url,
-      normalizedUrl: feed.url,
-      httpStatus: null,
-      newItems: 0,
-      error: { code: 'feed_in_progress', message: `Feed ${feedId} is already refreshing` },
     } satisfies SyncResult;
   }
   try {
@@ -276,8 +283,12 @@ export async function syncSection(
   opts?: FetchFeedOptions,
   onProgress?: (progress: SyncProgress) => void
 ) {
-  const feeds = listFeedsForSection(db, sectionId, { enabledOnly: true }) as Array<{ id: number }>;
-  return syncFeeds(db, feeds.map((feed) => feed.id), 'section', opts, onProgress);
+  const feeds = listFeedsForSection(db, sectionId, { enabledOnly: true }) as Array<{
+    id: number;
+    is_muted: number | null;
+  }>;
+  const feedIds = feeds.filter((feed) => feed.is_muted !== 1).map((feed) => feed.id);
+  return syncFeeds(db, feedIds, 'section', opts, onProgress);
 }
 
 export async function syncAllFeeds(

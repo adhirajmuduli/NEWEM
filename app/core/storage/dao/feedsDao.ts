@@ -27,8 +27,8 @@ export function createFeed(
   const stmt = db.prepare(
     `INSERT INTO feeds(url, title, site_url) VALUES (@url, @title, @site_url)
      ON CONFLICT(url) DO UPDATE SET
-       title=COALESCE(excluded.title, feeds.title),
-       site_url=COALESCE(excluded.site_url, feeds.site_url),
+       title=CASE WHEN feeds.title IS NULL OR TRIM(feeds.title) = '' THEN excluded.title ELSE feeds.title END,
+       site_url=CASE WHEN feeds.site_url IS NULL OR TRIM(feeds.site_url) = '' THEN excluded.site_url ELSE feeds.site_url END,
        updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
      RETURNING *`
   );
@@ -78,6 +78,28 @@ export function markFeedError(db: Database.Database, feedId: number, message: st
          updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
      WHERE id = ?`
   ).run(message, feedId);
+}
+
+export function getFeedByUrl(db: Database.Database, url: string): Feed | undefined {
+  const normalized = assertValidFeedUrl(url);
+  return db.prepare(`SELECT * FROM feeds WHERE url = ?`).get(normalized) as Feed | undefined;
+}
+
+export function updateFeedCache(
+  db: Database.Database,
+  id: number,
+  data: { etag?: string | null; lastModified?: string | null; error?: string | null }
+) {
+  db.prepare(
+    `UPDATE feeds
+     SET etag = @etag,
+         last_modified = @lastModified,
+         last_fetched_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+         last_error = @error,
+         is_fetching = 0,
+         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+     WHERE id = @id`
+  ).run({ id, etag: data.etag ?? null, lastModified: data.lastModified ?? null, error: data.error ?? null });
 }
 
 export function bulkAddFeeds(db: Database.Database, urlsText: string) {

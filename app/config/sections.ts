@@ -1,4 +1,19 @@
-export const CATALOG_VERSION = 1;
+export const CATALOG_VERSION = 2;
+
+export const RETIRED_FEED_URLS: string[] = [
+  'http://www.nasa.gov/rss/breaking_news.rss',
+  'https://feeds.reuters.com/Reuters/worldNews',
+  'https://feeds.reuters.com/reuters/topNews',
+  'https://feeds.reuters.com/Reuters/PoliticsNews',
+  'https://feeds.reuters.com/reuters/technologyNews',
+  'https://feeds.reuters.com/reuters/scienceNews',
+  'https://feeds.reuters.com/reuters/sportsNews',
+  'https://feeds.bbci.co.uk/sport/0/rss.xml?edition=uk',
+  'https://www.hindustantimes.com/feeds/rss/sports/rssfeed.xml',
+  'https://www.indiatoday.in/rss/1206550',
+  'https://rss.arxiv.org/rss/cs',
+  'https://venturebeat.com/category/ai/feed/',
+];
 
 export type FeedConfig = {
   title: string;
@@ -16,850 +31,353 @@ export type SectionConfig = {
   enabled: boolean;
 };
 
-export const SECTION_CONFIG: SectionConfig[] =[
-    {
-        "key":  "world",
-        "name":  "World",
-        "position":  0,
-        "legacyKeys":  [
-
-                       ],
-        "legacyNames":  [
-
-                        ],
-        "feeds":  [
-                      {
-                          "title":  "BBC News - World",
-                          "url":  "https://feeds.bbci.co.uk/news/world/rss.xml"
-                      },
-                      {
-                          "title":  "BBC News - Asia",
-                          "url":  "https://feeds.bbci.co.uk/news/world/asia/rss.xml"
-                      },
-                      {
-                          "title":  "Reuters - World News",
-                          "url":  "https://feeds.reuters.com/Reuters/worldNews"
-                      },
-                      {
-                          "title":  "Hindustan Times - World News",
-                          "url":  "https://www.hindustantimes.com/feeds/rss/world-news/rssfeed.xml"
-                      },
-                      {
-                          "title":  "NDTV - World",
-                          "url":  "https://feeds.feedburner.com/ndtvnews-world-news"
-                      },
-                      {
-                          "title":  "India Today - World",
-                          "url":  "https://www.indiatoday.in/rss/1206577"
-                      },
-                      {
-                          "title":  "Times of India - World News",
-                          "url":  "https://timesofindia.indiatimes.com/rssfeeds/296589292.cms"
-                      },
-                      {
-                          "title":  "News18 - World",
-                          "url":  "https://www.news18.com/rss/world.xml"
-                      },
-                      {
-                          "title":  "Fox News - World",
-                          "url":  "https://moxie.foxnews.com/google-publisher/world.xml"
-                      },
-                      {
-                          "title":  "The Hindu - International",
-                          "url":  "https://www.thehindu.com/news/international/feeder/default.rss"
-                      }
-                  ],
-        "fetchIntervalMinutes":  30,
-        "enabled":  true
-    },
-    {
-        "key":  "india",
-        "name":  "India",
-        "position":  1,
-        "legacyKeys":  [
-
-                       ],
-        "legacyNames":  [
-
-                        ],
-        "feeds":  [
-                      {
-                          "title":  "BBC News - India",
-                          "url":  "https://feeds.bbci.co.uk/news/world/asia/india/rss.xml"
-                      },
-                      {
-                          "title":  "Hindustan Times - India News",
-                          "url":  "https://www.hindustantimes.com/feeds/rss/india-news/rssfeed.xml"
-                      },
-                      {
-                          "title":  "NDTV - India",
-                          "url":  "https://feeds.feedburner.com/ndtvnews-india-news"
-                      },
-                      {
-                          "title":  "India Today - India",
-                          "url":  "https://www.indiatoday.in/rss/1206578"
-                      },
-                      {
-                          "title":  "India Today - Nation",
-                          "url":  "https://www.indiatoday.in/rss/1206514"
-                      },
-                      {
-                          "title":  "Times of India - India News",
-                          "url":  "https://timesofindia.indiatimes.com/rssfeeds/-2128936835.cms"
-                      },
-                      {
-                          "title":  "News18 - India",
-                          "url":  "https://www.news18.com/rss/india.xml"
-                      },
-                      {
-                          "title":  "News18 - India Alternate",
-                          "url":  "https://www.news18.com/commonfeeds/v1/eng/rss/india.xml"
-                      },
-                      {
-                          "title":  "The Hindu - National",
-                          "url":  "https://www.thehindu.com/news/national/feeder/default.rss"
-                      },
-                      {
-                          "title":  "PIB - Press Releases",
-                          "url":  "https://pib.gov.in/RssMain.aspx?ModId=6\u0026Lang=1\u0026Regid=1"
-                      }
-                  ],
-        "fetchIntervalMinutes":  30,
-        "enabled":  true
-    },
-    {
-        "key":  "odisha",
-        "name":  "Odisha",
-        "position":  2,
-        "legacyKeys":  [
-                           "bhubaneswar"
-                       ],
-        "legacyNames":  [
-                            "Bhubaneswar"
-                        ],
-        "feeds":  [
-                      {
-                          "title":  "Times of India - Bhubaneswar",
-                          "url":  "https://timesofindia.indiatimes.com/rssfeeds/4118235.cms"
-                      },
-                      {
-                          "title":  "Odisha TV - Main Feed",
-                          "url":  "https://odishatv.in/feed/"
-                      },
-                      {
-                          "title":  "OrissaPOST - Main Feed",
-                          "url":  "https://www.orissapost.com/feed/"
-                      },
-                      {
-                          "title":  "Odisha Bytes - Main Feed",
-                          "url":  "https://odishabytes.com/feed/"
-                      },
-                      {
-                          "title":  "PIB - Press Releases",
-                          "url":  "https://pib.gov.in/RssMain.aspx?ModId=6\u0026Lang=1\u0026Regid=1"
-                      }
-                  ],
-        "fetchIntervalMinutes":  30,
-        "enabled":  true
-    },
-    {
-        "key":  "technology",
-        "name":  "Technology",
-        "position":  3,
-        "legacyKeys":  [
-                           "tech"
-                       ],
-        "legacyNames":  [
-                            "Tech"
-                        ],
-        "feeds":  [
-                      {
-                          "title":  "BBC News - Technology",
-                          "url":  "https://feeds.bbci.co.uk/news/technology/rss.xml"
-                      },
-                      {
-                          "title":  "Reuters - Technology News",
-                          "url":  "https://feeds.reuters.com/reuters/technologyNews"
-                      },
-                      {
-                          "title":  "Hindustan Times - Technology",
-                          "url":  "https://www.hindustantimes.com/feeds/rss/technology/rssfeed.xml"
-                      },
-                      {
-                          "title":  "NDTV Gadgets 360 - Latest",
-                          "url":  "https://feeds.feedburner.com/gadgets360-latest"
-                      },
-                      {
-                          "title":  "India Today - Technology",
-                          "url":  "https://www.indiatoday.in/rss/1206688"
-                      },
-                      {
-                          "title":  "Times of India - Technology",
-                          "url":  "https://timesofindia.indiatimes.com/rssfeeds/66949542.cms"
-                      },
-                      {
-                          "title":  "Fox News - Tech",
-                          "url":  "https://moxie.foxnews.com/google-publisher/tech.xml"
-                      },
-                      {
-                          "title":  "The Hindu - Technology",
-                          "url":  "https://www.thehindu.com/sci-tech/technology/feeder/default.rss"
-                      },
-                      {
-                          "title":  "The Hindu - Sci-Tech",
-                          "url":  "https://www.thehindu.com/sci-tech/feeder/default.rss"
-                      },
-                      {
-                          "title":  "Indian Express - Explained Sci-Tech",
-                          "url":  "https://indianexpress.com/section/explained/explained-sci-tech/feed/"
-                      }
-                  ],
-        "fetchIntervalMinutes":  30,
-        "enabled":  true
-    },
-    {
-        "key":  "defense_security",
-        "name":  "Defense and Security",
-        "position":  4,
-        "legacyKeys":  [
-
-                       ],
-        "legacyNames":  [
-
-                        ],
-        "feeds":  [
-                      {
-                          "title":  "PIB - Press Releases",
-                          "url":  "https://pib.gov.in/RssMain.aspx?ModId=6\u0026Lang=1\u0026Regid=1"
-                      },
-                      {
-                          "title":  "Hindustan Times - Geopolitics",
-                          "url":  "https://www.hindustantimes.com/feeds/rss/geopolitics/rssfeed.xml"
-                      },
-                      {
-                          "title":  "Hindustan Times - International Affairs",
-                          "url":  "https://www.hindustantimes.com/feeds/rss/ht-insight/international-affairs/rssfeed.xml"
-                      },
-                      {
-                          "title":  "Reuters - Politics News",
-                          "url":  "https://feeds.reuters.com/Reuters/PoliticsNews"
-                      },
-                      {
-                          "title":  "Reuters - World News",
-                          "url":  "https://feeds.reuters.com/Reuters/worldNews"
-                      },
-                      {
-                          "title":  "BBC News - Middle East",
-                          "url":  "https://feeds.bbci.co.uk/news/world/middle_east/rss.xml"
-                      },
-                      {
-                          "title":  "BBC News - Asia",
-                          "url":  "https://feeds.bbci.co.uk/news/world/asia/rss.xml"
-                      },
-                      {
-                          "title":  "Times of India - South Asia",
-                          "url":  "https://timesofindia.indiatimes.com/rssfeeds/3907412.cms"
-                      },
-                      {
-                          "title":  "Times of India - China",
-                          "url":  "https://timesofindia.indiatimes.com/rssfeeds/1898184.cms"
-                      },
-                      {
-                          "title":  "Times of India - Pakistan",
-                          "url":  "https://timesofindia.indiatimes.com/rssfeeds/30359534.cms"
-                      },
-                      {
-                          "title":  "Times of India - Middle East",
-                          "url":  "https://timesofindia.indiatimes.com/rssfeeds/1898272.cms"
-                      },
-                      {
-                          "title":  "Fox News - Politics",
-                          "url":  "https://moxie.foxnews.com/google-publisher/politics.xml"
-                      },
-                      {
-                          "title":  "News18 - Politics",
-                          "url":  "https://www.news18.com/commonfeeds/v1/eng/rss/politics.xml"
-                      }
-                  ],
-        "fetchIntervalMinutes":  30,
-        "enabled":  true
-    },
-    {
-        "key":  "ai_ml",
-        "name":  "AI and ML",
-        "position":  5,
-        "legacyKeys":  [
-
-                       ],
-        "legacyNames":  [
-
-                        ],
-        "feeds":  [
-                      {
-                          "title":  "Hindustan Times - AI",
-                          "url":  "https://www.hindustantimes.com/feeds/rss/ai/rssfeed.xml"
-                      },
-                      {
-                          "title":  "TechCrunch - Artificial Intelligence",
-                          "url":  "https://techcrunch.com/category/artificial-intelligence/feed/"
-                      },
-                      {
-                          "title":  "VentureBeat - AI",
-                          "url":  "https://venturebeat.com/category/ai/feed/"
-                      },
-                      {
-                          "title":  "Analytics India Magazine - Main Feed",
-                          "url":  "https://analyticsindiamag.com/feed"
-                      },
-                      {
-                          "title":  "arXiv - Computer Science AI",
-                          "url":  "https://rss.arxiv.org/rss/cs.AI"
-                      },
-                      {
-                          "title":  "arXiv - Computer Science Machine Learning",
-                          "url":  "https://rss.arxiv.org/rss/cs.LG"
-                      },
-                      {
-                          "title":  "arXiv - Statistics Machine Learning",
-                          "url":  "https://rss.arxiv.org/rss/stat.ML"
-                      },
-                      {
-                          "title":  "Hacker News - Front Page",
-                          "url":  "https://news.ycombinator.com/rss"
-                      }
-                  ],
-        "fetchIntervalMinutes":  30,
-        "enabled":  true
-    },
-    {
-        "key":  "science",
-        "name":  "Science",
-        "position":  6,
-        "legacyKeys":  [
-
-                       ],
-        "legacyNames":  [
-
-                        ],
-        "feeds":  [
-                      {
-                          "title":  "BBC News - Science and Environment",
-                          "url":  "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml"
-                      },
-                      {
-                          "title":  "Reuters - Science News",
-                          "url":  "https://feeds.reuters.com/reuters/scienceNews"
-                      },
-                      {
-                          "title":  "Hindustan Times - Science",
-                          "url":  "https://www.hindustantimes.com/feeds/rss/science/rssfeed.xml"
-                      },
-                      {
-                          "title":  "India Today - Science",
-                          "url":  "https://www.indiatoday.in/rss/1206814"
-                      },
-                      {
-                          "title":  "Times of India - Science",
-                          "url":  "https://timesofindia.indiatimes.com/rssfeeds/-2128672765.cms"
-                      },
-                      {
-                          "title":  "Fox News - Science",
-                          "url":  "https://moxie.foxnews.com/google-publisher/science.xml"
-                      },
-                      {
-                          "title":  "The Hindu - Science",
-                          "url":  "https://www.thehindu.com/sci-tech/science/feeder/default.rss"
-                      },
-                      {
-                          "title":  "The Hindu - Sci-Tech",
-                          "url":  "https://www.thehindu.com/sci-tech/feeder/default.rss"
-                      },
-                      {
-                          "title":  "NASA - Breaking News",
-                          "url":  "http://www.nasa.gov/rss/breaking_news.rss"
-                      },
-                      {
-                          "title":  "arXiv - Physics",
-                          "url":  "https://rss.arxiv.org/rss/physics"
-                      },
-                      {
-                          "title":  "arXiv - Quantitative Biology",
-                          "url":  "https://rss.arxiv.org/rss/q-bio"
-                      }
-                  ],
-        "fetchIntervalMinutes":  30,
-        "enabled":  true
-    },
-    {
-        "key":  "geopolitics",
-        "name":  "Geopolitics",
-        "position":  7,
-        "legacyKeys":  [
-
-                       ],
-        "legacyNames":  [
-
-                        ],
-        "feeds":  [
-                      {
-                          "title":  "Hindustan Times - Geopolitics",
-                          "url":  "https://www.hindustantimes.com/feeds/rss/geopolitics/rssfeed.xml"
-                      },
-                      {
-                          "title":  "Hindustan Times - International Affairs",
-                          "url":  "https://www.hindustantimes.com/feeds/rss/ht-insight/international-affairs/rssfeed.xml"
-                      },
-                      {
-                          "title":  "Reuters - World News",
-                          "url":  "https://feeds.reuters.com/Reuters/worldNews"
-                      },
-                      {
-                          "title":  "Reuters - Politics News",
-                          "url":  "https://feeds.reuters.com/Reuters/PoliticsNews"
-                      },
-                      {
-                          "title":  "BBC News - Asia",
-                          "url":  "https://feeds.bbci.co.uk/news/world/asia/rss.xml"
-                      },
-                      {
-                          "title":  "BBC News - Middle East",
-                          "url":  "https://feeds.bbci.co.uk/news/world/middle_east/rss.xml"
-                      },
-                      {
-                          "title":  "BBC News - Europe",
-                          "url":  "https://feeds.bbci.co.uk/news/world/europe/rss.xml"
-                      },
-                      {
-                          "title":  "Times of India - South Asia",
-                          "url":  "https://timesofindia.indiatimes.com/rssfeeds/3907412.cms"
-                      },
-                      {
-                          "title":  "Times of India - China",
-                          "url":  "https://timesofindia.indiatimes.com/rssfeeds/1898184.cms"
-                      },
-                      {
-                          "title":  "Times of India - Pakistan",
-                          "url":  "https://timesofindia.indiatimes.com/rssfeeds/30359534.cms"
-                      },
-                      {
-                          "title":  "Times of India - Middle East",
-                          "url":  "https://timesofindia.indiatimes.com/rssfeeds/1898272.cms"
-                      },
-                      {
-                          "title":  "Times of India - Rest of World",
-                          "url":  "https://timesofindia.indiatimes.com/rssfeeds/671314.cms"
-                      },
-                      {
-                          "title":  "India Today - China",
-                          "url":  "https://www.indiatoday.in/rss/1207557"
-                      },
-                      {
-                          "title":  "India Today - US",
-                          "url":  "https://www.indiatoday.in/rss/1938656"
-                      },
-                      {
-                          "title":  "India Today - UK",
-                          "url":  "https://www.indiatoday.in/rss/1938659"
-                      },
-                      {
-                          "title":  "India Today - Canada",
-                          "url":  "https://www.indiatoday.in/rss/1938657"
-                      },
-                      {
-                          "title":  "Fox News - World",
-                          "url":  "https://moxie.foxnews.com/google-publisher/world.xml"
-                      },
-                      {
-                          "title":  "Fox News - Politics",
-                          "url":  "https://moxie.foxnews.com/google-publisher/politics.xml"
-                      },
-                      {
-                          "title":  "Indian Express - Explained Global",
-                          "url":  "https://indianexpress.com/section/explained/explained-global/feed/"
-                      }
-                  ],
-        "fetchIntervalMinutes":  30,
-        "enabled":  true
-    },
-    {
-        "key":  "international_relations",
-        "name":  "International Relations",
-        "position":  8,
-        "legacyKeys":  [
-
-                       ],
-        "legacyNames":  [
-
-                        ],
-        "feeds":  [
-                      {
-                          "title":  "Hindustan Times - International Affairs",
-                          "url":  "https://www.hindustantimes.com/feeds/rss/ht-insight/international-affairs/rssfeed.xml"
-                      },
-                      {
-                          "title":  "Hindustan Times - Geopolitics",
-                          "url":  "https://www.hindustantimes.com/feeds/rss/geopolitics/rssfeed.xml"
-                      },
-                      {
-                          "title":  "Reuters - World News",
-                          "url":  "https://feeds.reuters.com/Reuters/worldNews"
-                      },
-                      {
-                          "title":  "Reuters - Politics News",
-                          "url":  "https://feeds.reuters.com/Reuters/PoliticsNews"
-                      },
-                      {
-                          "title":  "BBC News - World",
-                          "url":  "https://feeds.bbci.co.uk/news/world/rss.xml"
-                      },
-                      {
-                          "title":  "BBC News - Asia",
-                          "url":  "https://feeds.bbci.co.uk/news/world/asia/rss.xml"
-                      },
-                      {
-                          "title":  "India Today - World",
-                          "url":  "https://www.indiatoday.in/rss/1206577"
-                      },
-                      {
-                          "title":  "The Hindu - International",
-                          "url":  "https://www.thehindu.com/news/international/feeder/default.rss"
-                      },
-                      {
-                          "title":  "Indian Express - Explained Global",
-                          "url":  "https://indianexpress.com/section/explained/explained-global/feed/"
-                      },
-                      {
-                          "title":  "PIB - Press Releases",
-                          "url":  "https://pib.gov.in/RssMain.aspx?ModId=6\u0026Lang=1\u0026Regid=1"
-                      }
-                  ],
-        "fetchIntervalMinutes":  30,
-        "enabled":  true
-    },
-    {
-        "key":  "sports",
-        "name":  "Sports",
-        "position":  9,
-        "legacyKeys":  [
-
-                       ],
-        "legacyNames":  [
-
-                        ],
-        "feeds":  [
-                      {
-                          "title":  "BBC Sport - Main",
-                          "url":  "https://feeds.bbci.co.uk/sport/0/rss.xml?edition=uk"
-                      },
-                      {
-                          "title":  "BBC Sport - Cricket",
-                          "url":  "https://feeds.bbci.co.uk/sport/cricket/rss.xml"
-                      },
-                      {
-                          "title":  "BBC Sport - Football",
-                          "url":  "https://feeds.bbci.co.uk/sport/football/rss.xml"
-                      },
-                      {
-                          "title":  "BBC Sport - Tennis",
-                          "url":  "https://feeds.bbci.co.uk/sport/tennis/rss.xml"
-                      },
-                      {
-                          "title":  "Reuters - Sports News",
-                          "url":  "https://feeds.reuters.com/reuters/sportsNews"
-                      },
-                      {
-                          "title":  "Hindustan Times - Sports",
-                          "url":  "https://www.hindustantimes.com/feeds/rss/sports/rssfeed.xml"
-                      },
-                      {
-                          "title":  "Hindustan Times - Cricket",
-                          "url":  "https://www.hindustantimes.com/feeds/rss/cricket/rssfeed.xml"
-                      },
-                      {
-                          "title":  "Hindustan Times - Football",
-                          "url":  "https://www.hindustantimes.com/feeds/rss/sports/football/rssfeed.xml"
-                      },
-                      {
-                          "title":  "Hindustan Times - Hockey",
-                          "url":  "https://www.hindustantimes.com/feeds/rss/sports/hockey/rssfeed.xml"
-                      },
-                      {
-                          "title":  "Hindustan Times - Tennis",
-                          "url":  "https://www.hindustantimes.com/feeds/rss/sports/tennis/rssfeed.xml"
-                      },
-                      {
-                          "title":  "Hindustan Times - Badminton",
-                          "url":  "https://www.hindustantimes.com/feeds/rss/sports/badminton/rssfeed.xml"
-                      },
-                      {
-                          "title":  "NDTV - Sports",
-                          "url":  "https://feeds.feedburner.com/ndtvsports-latest"
-                      },
-                      {
-                          "title":  "NDTV - Cricket",
-                          "url":  "https://feeds.feedburner.com/ndtvsports-cricket"
-                      },
-                      {
-                          "title":  "India Today - Sports",
-                          "url":  "https://www.indiatoday.in/rss/1206550"
-                      },
-                      {
-                          "title":  "India Today - Cricket",
-                          "url":  "https://www.indiatoday.in/rss/1207035"
-                      },
-                      {
-                          "title":  "India Today - Football",
-                          "url":  "https://www.indiatoday.in/rss/1207082"
-                      },
-                      {
-                          "title":  "Times of India - Sports News",
-                          "url":  "https://timesofindia.indiatimes.com/rssfeeds/4719148.cms"
-                      },
-                      {
-                          "title":  "News18 - Sports",
-                          "url":  "https://www.news18.com/commonfeeds/v1/eng/rss/sports.xml"
-                      },
-                      {
-                          "title":  "Fox News - Sports",
-                          "url":  "https://moxie.foxnews.com/google-publisher/sports.xml"
-                      },
-                      {
-                          "title":  "The Hindu - Cricket",
-                          "url":  "https://www.thehindu.com/sport/cricket/feeder/default.rss"
-                      },
-                      {
-                          "title":  "The Hindu - Football",
-                          "url":  "https://www.thehindu.com/sport/football/feeder/default.rss"
-                      },
-                      {
-                          "title":  "The Hindu - Hockey",
-                          "url":  "https://www.thehindu.com/sport/hockey/feeder/default.rss"
-                      },
-                      {
-                          "title":  "Indian Express - Explained Sports",
-                          "url":  "https://indianexpress.com/section/explained/explained-sports/feed/"
-                      },
-                      {
-                          "title":  "Indian Express - English Premier League",
-                          "url":  "https://indianexpress.com/section/sports/football/english-premier-league/feed/"
-                      }
-                  ],
-        "fetchIntervalMinutes":  30,
-        "enabled":  true
-    },
-    {
-        "key":  "mythology",
-        "name":  "Mythology",
-        "position":  10,
-        "legacyKeys":  [
-
-                       ],
-        "legacyNames":  [
-
-                        ],
-        "feeds":  [
-                      {
-                          "title":  "Hindustan Times - Astrology",
-                          "url":  "https://www.hindustantimes.com/feeds/rss/astrology/rssfeed.xml"
-                      },
-                      {
-                          "title":  "Hindustan Times - Panchang Shubh Muhurat",
-                          "url":  "https://www.hindustantimes.com/feeds/rss/astrology/panchang-shubh-muhurat/rssfeed.xml"
-                      },
-                      {
-                          "title":  "Hindustan Times - Spiritual",
-                          "url":  "https://www.hindustantimes.com/feeds/rss/lifestyle/spiritual/rssfeed.xml"
-                      }
-                  ],
-        "fetchIntervalMinutes":  30,
-        "enabled":  true
-    },
-    {
-        "key":  "indian_culture_traditions",
-        "name":  "Indian Culture and Traditions",
-        "position":  11,
-        "legacyKeys":  [
-
-                       ],
-        "legacyNames":  [
-
-                        ],
-        "feeds":  [
-                      {
-                          "title":  "The Hindu - Society",
-                          "url":  "https://www.thehindu.com/society/feeder/default.rss"
-                      },
-                      {
-                          "title":  "The Hindu - History and Culture",
-                          "url":  "https://www.thehindu.com/society/history-and-culture/feeder/default.rss"
-                      },
-                      {
-                          "title":  "India Today - Society and The Arts",
-                          "url":  "https://www.indiatoday.in/rss/1206504"
-                      },
-                      {
-                          "title":  "Hindustan Times - Spiritual",
-                          "url":  "https://www.hindustantimes.com/feeds/rss/lifestyle/spiritual/rssfeed.xml"
-                      },
-                      {
-                          "title":  "Hindustan Times - Astrology",
-                          "url":  "https://www.hindustantimes.com/feeds/rss/astrology/rssfeed.xml"
-                      },
-                      {
-                          "title":  "Indian Express - Explained Culture",
-                          "url":  "https://indianexpress.com/section/explained/explained-culture/feed/"
-                      }
-                  ],
-        "fetchIntervalMinutes":  30,
-        "enabled":  true
-    },
-    {
-        "key":  "government_official_sources",
-        "name":  "Government and Official Sources",
-        "position":  12,
-        "legacyKeys":  [
-
-                       ],
-        "legacyNames":  [
-
-                        ],
-        "feeds":  [
-                      {
-                          "title":  "PIB - Press Releases",
-                          "url":  "https://pib.gov.in/RssMain.aspx?ModId=6\u0026Lang=1\u0026Regid=1"
-                      },
-                      {
-                          "title":  "PIB - Media Invitation",
-                          "url":  "https://pib.gov.in/RssMain.aspx?ModId=10\u0026Lang=1\u0026Regid=1"
-                      },
-                      {
-                          "title":  "PIB - Photos RSS",
-                          "url":  "https://pib.gov.in/RssMain.aspx?ModId=8\u0026Lang=1\u0026Regid=1"
-                      },
-                      {
-                          "title":  "NASA - Breaking News",
-                          "url":  "http://www.nasa.gov/rss/breaking_news.rss"
-                      },
-                      {
-                          "title":  "arXiv - Computer Science",
-                          "url":  "https://rss.arxiv.org/rss/cs"
-                      },
-                      {
-                          "title":  "arXiv - Computer Science AI",
-                          "url":  "https://rss.arxiv.org/rss/cs.AI"
-                      },
-                      {
-                          "title":  "arXiv - Computer Science Machine Learning",
-                          "url":  "https://rss.arxiv.org/rss/cs.LG"
-                      },
-                      {
-                          "title":  "arXiv - Statistics Machine Learning",
-                          "url":  "https://rss.arxiv.org/rss/stat.ML"
-                      }
-                  ],
-        "fetchIntervalMinutes":  30,
-        "enabled":  true
-    },
-    {
-        "key":  "other_important_buckets",
-        "name":  "Other Important Buckets",
-        "position":  13,
-        "legacyKeys":  [
-
-                       ],
-        "legacyNames":  [
-
-                        ],
-        "feeds":  [
-                      {
-                          "title":  "Environment and Climate - BBC News - Science and Environment",
-                          "url":  "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml"
-                      },
-                      {
-                          "title":  "Environment and Climate - Reuters - Science News",
-                          "url":  "https://feeds.reuters.com/reuters/scienceNews"
-                      },
-                      {
-                          "title":  "Environment and Climate - Hindustan Times - Environment",
-                          "url":  "https://www.hindustantimes.com/feeds/rss/environment/rssfeed.xml"
-                      },
-                      {
-                          "title":  "Environment and Climate - India Today - Environment",
-                          "url":  "https://www.indiatoday.in/rss/1206542"
-                      },
-                      {
-                          "title":  "Environment and Climate - The Hindu - Science",
-                          "url":  "https://www.thehindu.com/sci-tech/science/feeder/default.rss"
-                      },
-                      {
-                          "title":  "Policy and Politics - Reuters - Politics News",
-                          "url":  "https://feeds.reuters.com/Reuters/PoliticsNews"
-                      },
-                      {
-                          "title":  "Policy and Politics - Fox News - Politics",
-                          "url":  "https://moxie.foxnews.com/google-publisher/politics.xml"
-                      },
-                      {
-                          "title":  "Policy and Politics - News18 - Politics",
-                          "url":  "https://www.news18.com/commonfeeds/v1/eng/rss/politics.xml"
-                      },
-                      {
-                          "title":  "Policy and Politics - PIB - Press Releases",
-                          "url":  "https://pib.gov.in/RssMain.aspx?ModId=6\u0026Lang=1\u0026Regid=1"
-                      },
-                      {
-                          "title":  "Policy and Politics - India Today - Nation",
-                          "url":  "https://www.indiatoday.in/rss/1206514"
-                      },
-                      {
-                          "title":  "Explainers and Analysis - Hindustan Times - Geopolitics",
-                          "url":  "https://www.hindustantimes.com/feeds/rss/geopolitics/rssfeed.xml"
-                      },
-                      {
-                          "title":  "Explainers and Analysis - Hindustan Times - International Affairs",
-                          "url":  "https://www.hindustantimes.com/feeds/rss/ht-insight/international-affairs/rssfeed.xml"
-                      },
-                      {
-                          "title":  "Explainers and Analysis - Indian Express - Explained Global",
-                          "url":  "https://indianexpress.com/section/explained/explained-global/feed/"
-                      },
-                      {
-                          "title":  "Explainers and Analysis - Indian Express - Explained Sci-Tech",
-                          "url":  "https://indianexpress.com/section/explained/explained-sci-tech/feed/"
-                      },
-                      {
-                          "title":  "Explainers and Analysis - Indian Express - Explained Sports",
-                          "url":  "https://indianexpress.com/section/explained/explained-sports/feed/"
-                      },
-                      {
-                          "title":  "Explainers and Analysis - Indian Express - Explained Culture",
-                          "url":  "https://indianexpress.com/section/explained/explained-culture/feed/"
-                      },
-                      {
-                          "title":  "Fallback Broad Feeds - Reuters - Top News",
-                          "url":  "https://feeds.reuters.com/reuters/topNews"
-                      },
-                      {
-                          "title":  "Fallback Broad Feeds - NDTV - Top Stories",
-                          "url":  "https://feeds.feedburner.com/ndtvnews-top-stories"
-                      },
-                      {
-                          "title":  "Fallback Broad Feeds - NDTV - Latest Stories",
-                          "url":  "https://feeds.feedburner.com/ndtvnews-latest"
-                      },
-                      {
-                          "title":  "Fallback Broad Feeds - India Today - Home",
-                          "url":  "https://www.indiatoday.in/rss/home"
-                      },
-                      {
-                          "title":  "Fallback Broad Feeds - Fox News - Latest Headlines",
-                          "url":  "https://moxie.foxnews.com/google-publisher/latest.xml"
-                      }
-                  ],
-        "fetchIntervalMinutes":  30,
-        "enabled":  true
-    }
+export const SECTION_CONFIG: SectionConfig[] = [
+  {
+    key: 'world',
+    name: 'World',
+    position: 0,
+    legacyKeys: [],
+    legacyNames: [],
+    fetchIntervalMinutes: 30,
+    enabled: true,
+    feeds: [
+      { title: 'BBC News - World', url: 'https://feeds.bbci.co.uk/news/world/rss.xml' },
+      { title: 'BBC News - US and Canada', url: 'https://feeds.bbci.co.uk/news/world/us_and_canada/rss.xml' },
+      { title: 'BBC News - Africa', url: 'https://feeds.bbci.co.uk/news/world/africa/rss.xml' },
+      { title: 'BBC News - Latin America', url: 'https://feeds.bbci.co.uk/news/world/latin_america/rss.xml' },
+      { title: 'Al Jazeera - English', url: 'https://www.aljazeera.com/xml/rss/all.xml' },
+      { title: 'The Guardian - World', url: 'https://www.theguardian.com/world/rss' },
+      { title: 'DW - World', url: 'https://rss.dw.com/xml/rss-en-world' },
+      { title: 'France 24 - English', url: 'https://www.france24.com/en/rss' },
+      { title: 'NPR - World', url: 'https://feeds.npr.org/1004/rss.xml' },
+      { title: 'New York Times - World', url: 'https://rss.nytimes.com/services/xml/rss/nyt/World.xml' },
+      { title: 'Sky News - World', url: 'https://feeds.skynews.com/feeds/rss/world.xml' },
+      { title: 'CNN - World', url: 'http://rss.cnn.com/rss/edition_world.rss' },
+      { title: 'Google News - World', url: 'https://news.google.com/rss?hl=en&gl=US&ceid=US:en' },
+      { title: 'Fox News - World', url: 'https://moxie.foxnews.com/google-publisher/world.xml' },
+      { title: 'NDTV - World', url: 'https://feeds.feedburner.com/ndtvnews-world-news' },
+      { title: 'Hindustan Times - World', url: 'https://www.hindustantimes.com/feeds/rss/world-news/rssfeed.xml' },
+      { title: 'Times of India - World', url: 'https://timesofindia.indiatimes.com/rssfeeds/296589292.cms' },
+      { title: 'India Today - World', url: 'https://www.indiatoday.in/rss/1206577' },
+      { title: 'The Hindu - International', url: 'https://www.thehindu.com/news/international/feeder/default.rss' },
+      { title: 'News18 - World', url: 'https://www.news18.com/rss/world.xml' },
+      { title: 'Indian Express - World', url: 'https://indianexpress.com/section/world/feed' },
+    ],
+  },
+  {
+    key: 'india',
+    name: 'India',
+    position: 1,
+    legacyKeys: [],
+    legacyNames: [],
+    fetchIntervalMinutes: 30,
+    enabled: true,
+    feeds: [
+      { title: 'BBC News - India', url: 'https://feeds.bbci.co.uk/news/world/asia/india/rss.xml' },
+      { title: 'NDTV - India', url: 'https://feeds.feedburner.com/ndtvnews-india-news' },
+      { title: 'Hindustan Times - India', url: 'https://www.hindustantimes.com/feeds/rss/india-news/rssfeed.xml' },
+      { title: 'Times of India - India', url: 'https://timesofindia.indiatimes.com/rssfeeds/-2128936835.cms' },
+      { title: 'India Today - India', url: 'https://www.indiatoday.in/rss/1206578' },
+      { title: 'India Today - Nation', url: 'https://www.indiatoday.in/rss/1206514' },
+      { title: 'The Hindu - National', url: 'https://www.thehindu.com/news/national/feeder/default.rss' },
+      { title: 'News18 - India', url: 'https://www.news18.com/commonfeeds/v1/eng/rss/india.xml' },
+      { title: 'Indian Express - India', url: 'https://indianexpress.com/section/india/feed' },
+      { title: 'PIB - Press Releases', url: 'https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=1' },
+      { title: 'Google News - India', url: 'https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en' },
+    ],
+  },
+  {
+    key: 'odisha',
+    name: 'Odisha',
+    position: 2,
+    legacyKeys: ['bhubaneswar'],
+    legacyNames: ['Bhubaneswar'],
+    fetchIntervalMinutes: 30,
+    enabled: true,
+    feeds: [
+      { title: 'Times of India - Bhubaneswar', url: 'https://timesofindia.indiatimes.com/rssfeeds/4118235.cms' },
+      { title: 'Odisha TV', url: 'https://odishatv.in/feed' },
+      { title: 'OrissaPOST', url: 'https://www.orissapost.com/feed' },
+      { title: 'Odisha Bytes', url: 'https://odishabytes.com/feed' },
+      { title: 'Pragativadi', url: 'https://pragativadi.com/feed' },
+    ],
+  },
+  {
+    key: 'technology',
+    name: 'Technology',
+    position: 3,
+    legacyKeys: ['tech'],
+    legacyNames: ['Tech'],
+    fetchIntervalMinutes: 30,
+    enabled: true,
+    feeds: [
+      { title: 'BBC News - Technology', url: 'https://feeds.bbci.co.uk/news/technology/rss.xml' },
+      { title: 'The Verge - Technology', url: 'https://www.theverge.com/rss/index.xml' },
+      { title: 'Ars Technica', url: 'https://arstechnica.com/feed' },
+      { title: 'TechCrunch - Technology', url: 'https://techcrunch.com/feed' },
+      { title: 'TechCrunch - Startups', url: 'https://techcrunch.com/category/startups/feed' },
+      { title: 'Wired - Technology', url: 'https://www.wired.com/feed/rss' },
+      { title: 'Engadget', url: 'https://www.engadget.com/rss.xml' },
+      { title: 'MIT Technology Review', url: 'https://www.technologyreview.com/feed' },
+      { title: 'The Register', url: 'https://www.theregister.com/headlines.rss' },
+      { title: 'Gizmodo', url: 'https://gizmodo.com/rss' },
+      { title: 'ZDNet', url: 'https://www.zdnet.com/rss.xml' },
+      { title: 'Hacker News - Front Page', url: 'https://news.ycombinator.com/rss' },
+      { title: 'NDTV Gadgets360 - Latest', url: 'https://feeds.feedburner.com/gadgets360-latest' },
+      { title: 'Hindustan Times - Technology', url: 'https://www.hindustantimes.com/feeds/rss/technology/rssfeed.xml' },
+      { title: 'Times of India - Technology', url: 'https://timesofindia.indiatimes.com/rssfeeds/66949542.cms' },
+      { title: 'India Today - Technology', url: 'https://www.indiatoday.in/rss/1206688' },
+      { title: 'The Hindu - Technology', url: 'https://www.thehindu.com/sci-tech/technology/feeder/default.rss' },
+      { title: 'News18 - Tech', url: 'https://www.news18.com/rss/tech.xml' },
+      { title: 'Indian Express - Technology', url: 'https://indianexpress.com/section/technology/feed' },
+      { title: 'Fox News - Tech', url: 'https://moxie.foxnews.com/google-publisher/tech.xml' },
+    ],
+  },
+  {
+    key: 'defense_security',
+    name: 'Defense and Security',
+    position: 4,
+    legacyKeys: [],
+    legacyNames: [],
+    fetchIntervalMinutes: 30,
+    enabled: true,
+    feeds: [
+      { title: 'PIB - Press Releases', url: 'https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=1' },
+      { title: 'Google News - Indian Defence', url: 'https://news.google.com/rss/search?q=indian+defence+news&hl=en-IN&gl=IN&ceid=IN:en' },
+      { title: 'Google News - Global Defence', url: 'https://news.google.com/rss/search?q=global+defence+and+military+news&hl=en&gl=US&ceid=US:en' },
+      { title: 'The Print - Defence', url: 'https://theprint.in/category/defence/feed' },
+      { title: 'LiveFist - Indian Defence', url: 'https://livefistdefence.com/feed' },
+      { title: 'MP-IDSA - Defence Studies', url: 'https://www.idsa.in/rss' },
+      { title: 'India Defence Review', url: 'https://www.indiandefencereview.com/feed' },
+      { title: 'Breaking Defense', url: 'https://breakingdefense.com/feed' },
+      { title: 'Defense News', url: 'https://www.defensenews.com/arc/outboundfeeds/rss/?outputType=xml' },
+      { title: 'The War Zone', url: 'https://www.thedrive.com/the-war-zone/feed' },
+      { title: 'SecurityWeek - Cybersecurity', url: 'https://www.securityweek.com/feed' },
+      { title: 'Krebs on Security', url: 'https://krebsonsecurity.com/feed' },
+      { title: 'The Hacker News - Cybersecurity', url: 'https://feeds.feedburner.com/TheHackersNews' },
+      { title: 'BleepingComputer - Cybersecurity', url: 'https://www.bleepingcomputer.com/feed' },
+    ],
+  },
+  {
+    key: 'ai_ml',
+    name: 'AI and ML',
+    position: 5,
+    legacyKeys: [],
+    legacyNames: [],
+    fetchIntervalMinutes: 30,
+    enabled: true,
+    feeds: [
+      { title: 'Hindustan Times - AI', url: 'https://www.hindustantimes.com/feeds/rss/ai/rssfeed.xml' },
+      { title: 'TechCrunch - Artificial Intelligence', url: 'https://techcrunch.com/category/artificial-intelligence/feed' },
+      { title: 'Analytics India Magazine', url: 'https://analyticsindiamag.com/feed' },
+      { title: 'arXiv - Artificial Intelligence', url: 'https://rss.arxiv.org/rss/cs.AI' },
+      { title: 'arXiv - Machine Learning', url: 'https://rss.arxiv.org/rss/cs.LG' },
+      { title: 'arXiv - Statistics Machine Learning', url: 'https://rss.arxiv.org/rss/stat.ML' },
+      { title: 'The Verge - AI', url: 'https://www.theverge.com/rss/ai-artificial-intelligence/index.xml' },
+      { title: 'MIT Technology Review - AI', url: 'https://www.technologyreview.com/topic/artificial-intelligence/feed' },
+      { title: 'MarkTechPost', url: 'https://www.marktechpost.com/feed' },
+      { title: 'Hugging Face - Blog', url: 'https://huggingface.co/blog/feed.xml' },
+      { title: 'Google DeepMind - Blog', url: 'https://deepmind.google/blog/rss.xml' },
+      { title: 'OpenAI - News', url: 'https://openai.com/news/rss.xml' },
+      { title: 'Towards Data Science', url: 'https://towardsdatascience.com/feed' },
+      { title: 'Import AI', url: 'https://importai.substack.com/feed' },
+      { title: 'BAIR Blog', url: 'https://bair.berkeley.edu/blog/feed.xml' },
+      { title: 'Microsoft Research - Blog', url: 'https://www.microsoft.com/en-us/research/feed' },
+      { title: 'Google Research - Blog', url: 'https://research.google/blog/rss' },
+    ],
+  },
+  {
+    key: 'science',
+    name: 'Science',
+    position: 6,
+    legacyKeys: [],
+    legacyNames: [],
+    fetchIntervalMinutes: 30,
+    enabled: true,
+    feeds: [
+      { title: 'BBC News - Science and Environment', url: 'https://feeds.bbci.co.uk/news/science_and_environment/rss.xml' },
+      { title: 'The Hindu - Science', url: 'https://www.thehindu.com/sci-tech/science/feeder/default.rss' },
+      { title: 'India Today - Science', url: 'https://www.indiatoday.in/rss/1206814' },
+      { title: 'Times of India - Science', url: 'https://timesofindia.indiatimes.com/rssfeeds/-2128672765.cms' },
+      { title: 'Hindustan Times - Science', url: 'https://www.hindustantimes.com/feeds/rss/science/rssfeed.xml' },
+      { title: 'Fox News - Science', url: 'https://moxie.foxnews.com/google-publisher/science.xml' },
+      { title: 'NASA - News Releases', url: 'https://www.nasa.gov/news-release/feed' },
+      { title: 'ESA - Space Science', url: 'https://www.esa.int/rssfeed/Our_Activities/Space_Science' },
+      { title: 'Phys.org', url: 'https://phys.org/rss-feed' },
+      { title: 'ScienceDaily - Science', url: 'https://www.sciencedaily.com/rss/top/science.xml' },
+      { title: 'Quanta Magazine', url: 'https://api.quantamagazine.org/feed' },
+      { title: 'New Scientist', url: 'https://www.newscientist.com/feed' },
+      { title: 'New Scientist - Space', url: 'https://www.newscientist.com/subject/space/feed' },
+      { title: 'New Scientist - Technology', url: 'https://www.newscientist.com/subject/technology/feed' },
+      { title: 'New Scientist - Health', url: 'https://www.newscientist.com/subject/health/feed' },
+      { title: 'Popular Science', url: 'https://www.popsci.com/rss.xml' },
+      { title: 'arXiv - Physics', url: 'https://rss.arxiv.org/rss/physics' },
+      { title: 'arXiv - Quantitative Biology', url: 'https://rss.arxiv.org/rss/q-bio' },
+    ],
+  },
+  {
+    key: 'geopolitics',
+    name: 'Geopolitics',
+    position: 7,
+    legacyKeys: [],
+    legacyNames: [],
+    fetchIntervalMinutes: 30,
+    enabled: true,
+    feeds: [
+      { title: 'Hindustan Times - Geopolitics', url: 'https://www.hindustantimes.com/feeds/rss/geopolitics/rssfeed.xml' },
+      { title: 'The Diplomat - Asia Geopolitics', url: 'https://thediplomat.com/feed' },
+      { title: 'Foreign Policy', url: 'https://foreignpolicy.com/feed' },
+      { title: 'War on the Rocks', url: 'https://warontherocks.com/feed' },
+      { title: 'Lowy Institute - The Interpreter', url: 'https://www.lowyinstitute.org/rss' },
+      { title: 'BBC News - Asia', url: 'https://feeds.bbci.co.uk/news/world/asia/rss.xml' },
+      { title: 'BBC News - Middle East', url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },
+      { title: 'BBC News - Europe', url: 'https://feeds.bbci.co.uk/news/world/europe/rss.xml' },
+      { title: 'Times of India - South Asia', url: 'https://timesofindia.indiatimes.com/rssfeeds/3907412.cms' },
+      { title: 'Times of India - China', url: 'https://timesofindia.indiatimes.com/rssfeeds/1898184.cms' },
+      { title: 'Times of India - Pakistan', url: 'https://timesofindia.indiatimes.com/rssfeeds/30359534.cms' },
+      { title: 'Times of India - Middle East', url: 'https://timesofindia.indiatimes.com/rssfeeds/1898272.cms' },
+    ],
+  },
+  {
+    key: 'international_relations',
+    name: 'International Relations',
+    position: 8,
+    legacyKeys: [],
+    legacyNames: [],
+    fetchIntervalMinutes: 30,
+    enabled: true,
+    feeds: [
+      { title: 'Hindustan Times - International Affairs', url: 'https://www.hindustantimes.com/feeds/rss/ht-insight/international-affairs/rssfeed.xml' },
+      { title: 'The Hindu - International', url: 'https://www.thehindu.com/news/international/feeder/default.rss' },
+      { title: 'Foreign Affairs', url: 'https://www.foreignaffairs.com/rss.xml' },
+      { title: 'Project Syndicate', url: 'https://www.project-syndicate.org/rss' },
+      { title: 'Indian Express - Explained Global', url: 'https://indianexpress.com/section/explained/explained-global/feed' },
+      { title: 'India Today - US', url: 'https://www.indiatoday.in/rss/1938656' },
+      { title: 'India Today - UK', url: 'https://www.indiatoday.in/rss/1938659' },
+      { title: 'India Today - Canada', url: 'https://www.indiatoday.in/rss/1938657' },
+      { title: 'India Today - China', url: 'https://www.indiatoday.in/rss/1207557' },
+      { title: 'Times of India - Rest of World', url: 'https://timesofindia.indiatimes.com/rssfeeds/671314.cms' },
+    ],
+  },
+  {
+    key: 'sports',
+    name: 'Sports',
+    position: 9,
+    legacyKeys: [],
+    legacyNames: [],
+    fetchIntervalMinutes: 30,
+    enabled: true,
+    feeds: [
+      { title: 'ESPNcricinfo - Cricket', url: 'https://www.espncricinfo.com/rss/content/story/feeds/0.xml' },
+      { title: 'ESPN - Top News', url: 'https://www.espn.com/espn/rss/news' },
+      { title: 'BBC Sport - Cricket', url: 'https://feeds.bbci.co.uk/sport/cricket/rss.xml' },
+      { title: 'BBC Sport - Football', url: 'https://feeds.bbci.co.uk/sport/football/rss.xml' },
+      { title: 'BBC Sport - Tennis', url: 'https://feeds.bbci.co.uk/sport/tennis/rss.xml' },
+      { title: 'Hindustan Times - Cricket', url: 'https://www.hindustantimes.com/feeds/rss/cricket/rssfeed.xml' },
+      { title: 'Hindustan Times - Football', url: 'https://www.hindustantimes.com/feeds/rss/sports/football/rssfeed.xml' },
+      { title: 'Hindustan Times - Hockey', url: 'https://www.hindustantimes.com/feeds/rss/sports/hockey/rssfeed.xml' },
+      { title: 'Hindustan Times - Badminton', url: 'https://www.hindustantimes.com/feeds/rss/sports/badminton/rssfeed.xml' },
+      { title: 'Hindustan Times - Tennis', url: 'https://www.hindustantimes.com/feeds/rss/sports/tennis/rssfeed.xml' },
+      { title: 'NDTV Sports - Latest', url: 'https://feeds.feedburner.com/ndtvsports-latest' },
+      { title: 'NDTV Sports - Cricket', url: 'https://feeds.feedburner.com/ndtvsports-cricket' },
+      { title: 'India Today - Cricket', url: 'https://www.indiatoday.in/rss/1207035' },
+      { title: 'India Today - Football', url: 'https://www.indiatoday.in/rss/1207082' },
+      { title: 'Times of India - Sports', url: 'https://timesofindia.indiatimes.com/rssfeeds/4719148.cms' },
+      { title: 'News18 - Sports', url: 'https://www.news18.com/commonfeeds/v1/eng/rss/sports.xml' },
+      { title: 'The Hindu - Cricket', url: 'https://www.thehindu.com/sport/cricket/feeder/default.rss' },
+      { title: 'The Hindu - Football', url: 'https://www.thehindu.com/sport/football/feeder/default.rss' },
+      { title: 'The Hindu - Hockey', url: 'https://www.thehindu.com/sport/hockey/feeder/default.rss' },
+      { title: 'Indian Express - Sports', url: 'https://indianexpress.com/section/sports/feed' },
+      { title: 'Indian Express - Premier League', url: 'https://indianexpress.com/section/sports/football/english-premier-league/feed' },
+      { title: 'The Bridge - Indian Sports', url: 'https://thebridge.in/feed' },
+      { title: 'Sky News - Sports', url: 'https://feeds.skynews.com/feeds/rss/sports.xml' },
+      { title: 'The Guardian - Sport', url: 'https://www.theguardian.com/uk/sport/rss' },
+      { title: 'The Guardian - Football', url: 'https://www.theguardian.com/football/rss' },
+      { title: 'Fox News - Sports', url: 'https://moxie.foxnews.com/google-publisher/sports.xml' },
+    ],
+  },
+  {
+    key: 'mythology',
+    name: 'Mythology',
+    position: 10,
+    legacyKeys: [],
+    legacyNames: [],
+    fetchIntervalMinutes: 30,
+    enabled: true,
+    feeds: [
+      { title: 'Hindustan Times - Astrology', url: 'https://www.hindustantimes.com/feeds/rss/astrology/rssfeed.xml' },
+      { title: 'Hindustan Times - Panchang and Muhurat', url: 'https://www.hindustantimes.com/feeds/rss/astrology/panchang-shubh-muhurat/rssfeed.xml' },
+      { title: 'Hindustan Times - Spiritual', url: 'https://www.hindustantimes.com/feeds/rss/lifestyle/spiritual/rssfeed.xml' },
+      { title: 'Google News - Indian Mythology', url: 'https://news.google.com/rss/search?q=indian+mythology&hl=en-IN&gl=IN&ceid=IN:en' },
+    ],
+  },
+  {
+    key: 'indian_culture_traditions',
+    name: 'Indian Culture and Traditions',
+    position: 11,
+    legacyKeys: [],
+    legacyNames: [],
+    fetchIntervalMinutes: 30,
+    enabled: true,
+    feeds: [
+      { title: 'The Hindu - Society', url: 'https://www.thehindu.com/society/feeder/default.rss' },
+      { title: 'The Hindu - History and Culture', url: 'https://www.thehindu.com/society/history-and-culture/feeder/default.rss' },
+      { title: 'India Today - Society and The Arts', url: 'https://www.indiatoday.in/rss/1206504' },
+      { title: 'Indian Express - Explained Culture', url: 'https://indianexpress.com/section/explained/explained-culture/feed' },
+      { title: 'Google News - Indian Culture and Heritage', url: 'https://news.google.com/rss/search?q=indian+culture+and+heritage&hl=en-IN&gl=IN&ceid=IN:en' },
+    ],
+  },
+  {
+    key: 'government_official_sources',
+    name: 'Government and Official Sources',
+    position: 12,
+    legacyKeys: [],
+    legacyNames: [],
+    fetchIntervalMinutes: 30,
+    enabled: true,
+    feeds: [
+      { title: 'PIB - Press Releases', url: 'https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=1' },
+      { title: 'PIB - Media Invitations', url: 'https://pib.gov.in/RssMain.aspx?ModId=10&Lang=1&Regid=1' },
+      { title: 'PIB - Photos', url: 'https://pib.gov.in/RssMain.aspx?ModId=8&Lang=1&Regid=1' },
+      { title: 'PIB - Hindi Press Releases', url: 'https://pib.gov.in/RssMain.aspx?ModId=6&Lang=2&Regid=1' },
+      { title: 'NASA - News Releases', url: 'https://www.nasa.gov/news-release/feed' },
+      { title: 'ESA - Top News', url: 'https://www.esa.int/rssfeed/ESA' },
+      { title: 'arXiv - Artificial Intelligence', url: 'https://rss.arxiv.org/rss/cs.AI' },
+      { title: 'arXiv - Machine Learning', url: 'https://rss.arxiv.org/rss/cs.LG' },
+      { title: 'arXiv - Statistics Machine Learning', url: 'https://rss.arxiv.org/rss/stat.ML' },
+    ],
+  },
+  {
+    key: 'other_important_buckets',
+    name: 'Other Important Buckets',
+    position: 13,
+    legacyKeys: [],
+    legacyNames: [],
+    fetchIntervalMinutes: 30,
+    enabled: true,
+    feeds: [
+      { title: 'Hindustan Times - Environment', url: 'https://www.hindustantimes.com/feeds/rss/environment/rssfeed.xml' },
+      { title: 'India Today - Environment', url: 'https://www.indiatoday.in/rss/1206542' },
+      { title: 'Down To Earth', url: 'https://www.downtoearth.org.in/feed' },
+      { title: 'The Guardian - Environment', url: 'https://www.theguardian.com/environment/rss' },
+      { title: 'Carbon Brief', url: 'https://www.carbonbrief.org/feed' },
+      { title: 'News18 - Politics', url: 'https://www.news18.com/commonfeeds/v1/eng/rss/politics.xml' },
+      { title: 'Fox News - Politics', url: 'https://moxie.foxnews.com/google-publisher/politics.xml' },
+      { title: 'The Print - Politics', url: 'https://theprint.in/category/politics/feed' },
+      { title: 'Indian Express - Politics', url: 'https://indianexpress.com/section/politics/feed' },
+      { title: 'Economic Times - Top Stories', url: 'https://economictimes.indiatimes.com/rssfeedstopstories.cms' },
+      { title: 'Livemint - News', url: 'https://www.livemint.com/rss/news' },
+      { title: 'Moneycontrol - Top News', url: 'https://www.moneycontrol.com/rss/latestnews.xml' },
+      { title: 'Business Standard - Latest', url: 'https://www.business-standard.com/rss/latest.rss' },
+      { title: 'NDTV Profit - Business', url: 'https://www.ndtvprofit.com/rss' },
+      { title: 'Indian Express - Explained', url: 'https://indianexpress.com/section/explained/feed' },
+      { title: 'Indian Express - Explained Sci-Tech', url: 'https://indianexpress.com/section/explained/explained-sci-tech/feed' },
+      { title: 'Indian Express - Explained Sports', url: 'https://indianexpress.com/section/explained/explained-sports/feed' },
+      { title: 'Indian Express - Explained Culture', url: 'https://indianexpress.com/section/explained/explained-culture/feed' },
+      { title: 'NDTV - Top Stories', url: 'https://feeds.feedburner.com/ndtvnews-top-stories' },
+      { title: 'NDTV - Latest', url: 'https://feeds.feedburner.com/ndtvnews-latest' },
+      { title: 'India Today - Home', url: 'https://www.indiatoday.in/rss/home' },
+      { title: 'Fox News - Latest', url: 'https://moxie.foxnews.com/google-publisher/latest.xml' },
+    ],
+  },
 ];
-
-
-     

@@ -21,8 +21,6 @@ declare global {
 type ItemState = Record<number, { loading: boolean; error: string | null; warning: string | null; items: ItemWire[] }>;
 type FeedTestState = { url: string; resolvedUrl?: string; status: 'idle' | 'testing' | 'ok' | 'error'; message: string };
 
-const PANEL_CONTROLS_ENABLED = false;
-
 function api() {
   if (!window.readit) throw new Error('READIT preload API unavailable');
   return window.readit;
@@ -78,6 +76,7 @@ export function AppShell() {
   const [dataMessage, setDataMessage] = React.useState('');
   const panelElements = React.useRef(new Map<string, HTMLDivElement>());
   const selectedSectionIdRef = React.useRef<number | null>(null);
+  const loadSeq = React.useRef(new Map<number, number>());
 
   const selectedSection = sections.find((section) => section.id === selectedSectionId);
   const orderedSections = React.useMemo(() => orderedSectionsForLayout(sections, layout), [sections, layout]);
@@ -89,11 +88,25 @@ export function AppShell() {
     [sections]
   );
 
+  async function run(action: () => Promise<void>) {
+    try {
+      await action();
+    } catch (err) {
+      setTransientError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
   async function refreshSections(nextSelectedId?: number) {
     const response = await api().listSections();
     setSections(response.sections);
     setLayoutState((current) => normalizeLayoutForSections(current, response.sections));
-    setItems((current) => ({ ...emptyItems(response.sections), ...current }));
+    setItems((current) => {
+      const next: ItemState = {};
+      for (const section of response.sections) {
+        next[section.id] = current[section.id] ?? { loading: false, error: null, warning: null, items: [] };
+      }
+      return next;
+    });
     const currentSelectedId = selectedSectionIdRef.current;
     const target = nextSelectedId && response.sections.some((section) => section.id === nextSelectedId)
       ? nextSelectedId
@@ -107,11 +120,15 @@ export function AppShell() {
   }
 
   async function loadItems(sectionId: number) {
+    const seq = (loadSeq.current.get(sectionId) ?? 0) + 1;
+    loadSeq.current.set(sectionId, seq);
     setItems((current) => ({ ...current, [sectionId]: { ...(current[sectionId] || { items: [], warning: null }), loading: true, error: null } }));
     try {
       const response = await api().queryItems({ sectionId, all: true });
+      if (loadSeq.current.get(sectionId) !== seq) return;
       setItems((current) => ({ ...current, [sectionId]: { loading: false, error: null, warning: current[sectionId]?.warning || null, items: response.items } }));
     } catch (err) {
+      if (loadSeq.current.get(sectionId) !== seq) return;
       setItems((current) => ({
         ...current,
         [sectionId]: { ...(current[sectionId] || { items: [], warning: null }), loading: false, error: err instanceof Error ? err.message : String(err) },
@@ -210,8 +227,18 @@ export function AppShell() {
   async function persistLayout(next: LayoutWire) {
     const normalized = normalizeLayoutForSections(next, sections);
     setLayoutState(normalized);
-    const response = await api().setLayout({ layout: normalized });
-    setLayoutState(normalizeLayoutForSections(response.layout, sections));
+    try {
+      const response = await api().setLayout({ layout: normalized });
+      setLayoutState(normalizeLayoutForSections(response.layout, sections));
+    } catch (err) {
+      try {
+        const response = await api().getLayout();
+        setLayoutState(normalizeLayoutForSections(response.layout, sections));
+      } catch {
+        // Keep the optimistic layout if resynchronization also fails.
+      }
+      throw err;
+    }
   }
 
   async function createSection() {
@@ -241,13 +268,20 @@ export function AppShell() {
 
   async function moveSection(direction: -1 | 1) {
     if (!selectedSection) return;
-    const index = sections.findIndex((section) => section.id === selectedSection.id);
-    const target = index + direction;
-    if (index < 0 || target < 0 || target >= sections.length) return;
-    const next = [...sections];
-    [next[index], next[target]] = [next[target], next[index]];
-    setSections(next.map((section, position_index) => ({ ...section, position_index })));
-    await api().reorderSections({ sectionIds: next.map((section) => section.id) });
+    const reordered = movePanel(layout, selectedSection.key, direction);
+    if (reordered === layout) return;
+    const idByKey = new Map(sections.map((section) => [section.key, section.id] as const));
+    const orderedIds = reordered.panels
+      .map((panel) => idByKey.get(panel.id))
+      .filter((id): id is number => id !== undefined);
+    const orderById = new Map(orderedIds.map((id, index) => [id, index] as const));
+    setSections((current) => [...current]
+      .sort((a, b) => (orderById.get(a.id) ?? 9999) - (orderById.get(b.id) ?? 9999))
+      .map((section, position_index) => ({ ...section, position_index })));
+    await run(async () => {
+      await api().reorderSections({ sectionIds: orderedIds });
+      await persistLayout(reordered);
+    });
     await refreshSections(selectedSection.id);
   }
 
@@ -316,11 +350,6 @@ export function AppShell() {
     }
   }
 
-  async function toggleFeed(feed: FeedWire) {
-    await api().updateFeed({ feedId: feed.id, enabled: feed.is_enabled !== 1 });
-    await refreshSections(selectedSection?.id);
-  }
-
   async function removeFeed(feed: FeedWire) {
     if (!selectedSection) return;
     await api().removeFeedFromSection({ sectionId: selectedSection.id, feedId: feed.id });
@@ -352,8 +381,8 @@ export function AppShell() {
         [sectionId]: {
           ...(current[sectionId] || { items: [] }),
           loading: false,
-          error: null,
-          warning: `Refresh could not complete: ${err instanceof Error ? err.message : String(err)}`,
+          error: `Refresh could not complete: ${err instanceof Error ? err.message : String(err)}`,
+          warning: null,
         },
       }));
     }
@@ -449,8 +478,8 @@ export function AppShell() {
     if (date) console.info('search_custom_date_selected', date.toISOString());
   }
 
-  async function toggleMute(feed: FeedWire) {
-    await api().updateFeed({ feedId: feed.id, muted: feed.is_muted !== 1 });
+  async function toggleMute(feed: FeedWire, next: boolean) {
+    await api().updateFeed({ feedId: feed.id, muted: next, enabled: true });
     await refreshSections(selectedSection?.id);
   }
 
@@ -519,10 +548,6 @@ export function AppShell() {
     await persistLayout(resetLayoutForSections(sections, colorScheme.id));
   }
 
-  async function moveLayoutPanel(sectionKey: string, direction: -1 | 1) {
-    await persistLayout(movePanel(layout, sectionKey, direction));
-  }
-
   function startResize(sectionKey: string, startClientX: number) {
     const startWidth = panelWidth(layout, sectionKey);
     const viewportWidth = Math.max(360, window.innerWidth || 1200);
@@ -540,7 +565,12 @@ export function AppShell() {
     };
     const onUp = async () => {
       cleanup();
-      await persistLayout(resizePanel(layout, sectionKey, previewWidth));
+      try {
+        await persistLayout(resizePanel(layout, sectionKey, previewWidth));
+      } catch (err) {
+        panel?.style.setProperty('--panel-width', String(startWidth) + '%');
+        setTransientError(err instanceof Error ? err.message : String(err));
+      }
     };
     const onCancel = () => {
       cleanup();
@@ -581,7 +611,7 @@ export function AppShell() {
       {transientError ? <div className="app-error transient" role="alert">{transientError}</div> : null}
       {error ? <div className="app-error" role="alert">{error}</div> : null}
       {notice ? <div className="app-notice" role="status">{notice}</div> : null}
-      {searchVisible ? <section className="search-results" aria-label="Search results"><header><h2>Local results</h2><span>{searchResults.length} item(s)</span><button type="button" onClick={() => setSearchVisible(false)}>Close</button></header><div className="search-results-scroll"><ItemList sectionId={-1} items={searchResults} openExternalItem={(sectionId, item) => void openItem(sectionId, item)} onToggleImportant={(sectionId, item) => void toggleImportant(sectionId, item)} /></div></section> : null}
+      {searchVisible ? <section className="search-results" aria-label="Search results"><header><h2>Local results</h2><span>{searchResults.length} item(s)</span><button type="button" onClick={() => setSearchVisible(false)}>Close</button></header><div className="search-results-scroll"><ItemList sectionId={-1} items={searchResults} openExternalItem={(sectionId, item) => void run(() => openItem(sectionId, item))} onToggleImportant={(sectionId, item) => void run(() => toggleImportant(sectionId, item))} /></div></section> : null}
 
       <main className="workspace" id="workspace" tabIndex={-1}>
         {managerOpen ? (
@@ -611,16 +641,16 @@ export function AppShell() {
                   </div>
                   <div className="inline-form">
                     <input value={newSectionName} onChange={(event) => setNewSectionName(event.target.value)} placeholder="New section" />
-                    <button type="button" onClick={() => void createSection()}>Create</button>
+                    <button type="button" onClick={() => void run(() => createSection())}>Create</button>
                   </div>
                   <div className="inline-form">
                     <input value={renameValue} onChange={(event) => setRenameValue(event.target.value)} placeholder="Rename selected section" disabled={!selectedSection} />
-                    <button type="button" onClick={() => void renameSection()} disabled={!selectedSection}>Rename</button>
+                    <button type="button" onClick={() => void run(() => renameSection())} disabled={!selectedSection}>Rename</button>
                   </div>
                   <div className="button-row">
-                    <button type="button" onClick={() => void moveSection(-1)} disabled={!selectedSection}>Move up</button>
-                    <button type="button" onClick={() => void moveSection(1)} disabled={!selectedSection}>Move down</button>
-                    <button type="button" className="danger" onClick={() => void deleteSection()} disabled={!selectedSection}>Delete</button>
+                    <button type="button" onClick={() => void run(() => moveSection(-1))} disabled={!selectedSection}>Move up</button>
+                    <button type="button" onClick={() => void run(() => moveSection(1))} disabled={!selectedSection}>Move down</button>
+                    <button type="button" className="danger" onClick={() => void run(() => deleteSection())} disabled={!selectedSection}>Delete</button>
                   </div>
                 </div>
 
@@ -672,10 +702,10 @@ export function AppShell() {
                       <h2>Layout</h2>
                       <div className="segmented">
                         {(['stack', 'mosaic'] as LayoutModeWire[]).map((mode) => (
-                          <button key={mode} type="button" className={layout.mode === mode ? 'selected' : ''} onClick={() => void persistLayout({ ...layout, mode })}>{mode}</button>
+                          <button key={mode} type="button" className={layout.mode === mode ? 'selected' : ''} onClick={() => void run(() => persistLayout({ ...layout, mode }))}>{mode}</button>
                         ))}
                       </div>
-                      <button type="button" onClick={() => void resetLayout()}>Reset layout</button>
+                      <button type="button" onClick={() => void run(() => resetLayout())}>Reset layout</button>
                     </div>
 
                     <div className="manager-block">
@@ -687,7 +717,7 @@ export function AppShell() {
                           value={colorScheme.id}
                           onChange={(event) => {
                             const theme = event.currentTarget.value as ColorSchemeId;
-                            void updateColorScheme(theme).catch((err) => setError(err instanceof Error ? err.message : String(err)));
+                            void run(() => updateColorScheme(theme));
                           }}
                         >
                           {COLOR_SCHEMES.map((scheme) => <option key={scheme.id} value={scheme.id}>{scheme.label}</option>)}
@@ -709,14 +739,14 @@ export function AppShell() {
                     <div className="manager-block">
                       <h2>Data and diagnostics</h2>
                       <div className="button-row wrap">
-                        <button type="button" onClick={() => void exportSubscriptions()}>Export OPML</button>
+                        <button type="button" onClick={() => void run(() => exportSubscriptions())}>Export OPML</button>
                         <label className="file-button">Import OPML<input type="file" accept=".opml,.xml,text/xml" onChange={(event) => {
                           const file = event.currentTarget.files?.[0];
-                          if (file) void importSubscriptions(file).catch((err) => setError(err instanceof Error ? err.message : String(err)));
+                          if (file) void run(() => importSubscriptions(file));
                           event.currentTarget.value = '';
                         }} /></label>
-                        <button type="button" onClick={() => void exportBackup()}>Back up database</button>
-                        <button type="button" onClick={() => void exportDiagnosticBundle()}>Export diagnostics</button>
+                        <button type="button" onClick={() => void run(() => exportBackup())}>Back up database</button>
+                        <button type="button" onClick={() => void run(() => exportDiagnosticBundle())}>Export diagnostics</button>
                       </div>
                       {dataMessage ? <p className="form-message" aria-live="polite">{dataMessage}</p> : null}
                     </div>
@@ -744,13 +774,6 @@ export function AppShell() {
                 style={{ '--panel-width': `${width}%`, order: index } as React.CSSProperties}
                 data-panel-id={section.key}
               >
-                {PANEL_CONTROLS_ENABLED ? (
-                  <div className="panel-controls" aria-label={`${section.name} panel controls`}>
-                    <button type="button" onClick={() => void moveLayoutPanel(section.key, -1)} disabled={index === 0}>Move left</button>
-                    <button type="button" onClick={() => void moveLayoutPanel(section.key, 1)} disabled={index === orderedSections.length - 1}>Move right</button>
-                    <span>{width}%</span>
-                  </div>
-                ) : null}
                 <SectionPanel
                   section={section}
                   items={state.items}
@@ -760,15 +783,14 @@ export function AppShell() {
                   progress={syncProgress[section.id] ?? globalProgress}
                   appearance={layout.appearance?.[section.key]}
                   dayWindow={layout.dayWindows?.[section.key]}
-                  onDayWindowChange={(sectionKey, days) => void updateSectionDayWindow(sectionKey, days)}
+                  onDayWindowChange={(sectionKey, days) => void run(() => updateSectionDayWindow(sectionKey, days))}
                   onRefresh={(sectionId) => void refreshSection(sectionId)}
-                  onMarkSeen={(sectionId) => void markSectionSeen(sectionId)}
-                  openExternalItem={(sectionId, item) => void openItem(sectionId, item)}
-                  onToggleImportant={(sectionId, item) => void toggleImportant(sectionId, item)}
-                  onToggleFeed={(feed) => void toggleFeed(feed)}
-                  onToggleMute={(feed) => void toggleMute(feed)}
-                  onUpdateInterval={(feed, minutes) => void updateInterval(feed, minutes)}
-                  onRemoveFeed={(feed) => void removeFeed(feed)}
+                  onMarkSeen={(sectionId) => void run(() => markSectionSeen(sectionId))}
+                  openExternalItem={(sectionId, item) => void run(() => openItem(sectionId, item))}
+                  onToggleImportant={(sectionId, item) => void run(() => toggleImportant(sectionId, item))}
+                  onToggleMute={(feed, next) => void run(() => toggleMute(feed, next))}
+                  onUpdateInterval={(feed, minutes) => void run(() => updateInterval(feed, minutes))}
+                  onRemoveFeed={(feed) => void run(() => removeFeed(feed))}
                 />
                 <ResizeHandle label={`Resize ${section.name}`} onResizeStart={(clientX) => startResize(section.key, clientX)} />
               </div>

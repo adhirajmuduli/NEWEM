@@ -55,6 +55,7 @@ describe('storage migrations', () => {
     expect(tableColumns(db, 'item_state').has('is_important')).toBe(true);
     expect(db.prepare(`SELECT value_json FROM settings WHERE key='layout'`).get()).toBeTruthy();
     expect(listSections(db).length).toBeGreaterThan(0);
+    expect(db.prepare(`SELECT name FROM sqlite_master WHERE type='index' AND name='idx_item_state_cover'`).get()).toBeTruthy();
   });
 
   it('upgrades older databases with seen_at, missing section keys, and optional fetch_error', () => {
@@ -139,6 +140,7 @@ describe('storage migrations', () => {
     expect(state.is_read).toBe(1);
     expect(state.read_at).toBe('2026-01-01T00:00:00.000Z');
     expect(db.prepare(`SELECT published_at FROM items WHERE id=1`).get()).toMatchObject({ published_at: '2026-06-29T12:30:00.000Z' });
+    expect(db.prepare(`SELECT name FROM sqlite_master WHERE type='index' AND name='idx_item_state_cover'`).get()).toBeTruthy();
     expect(listSections(db)).toHaveLength(15);
     expect(listSections(db).some((row) => row.name === 'Legacy Section')).toBe(true);
   });
@@ -157,6 +159,20 @@ describe('storage DAOs', () => {
     expect(renamed?.key).toBe('science');
     expect(listFeedsForSection(db, created.id).map((row: any) => row.url)).toContain('https://example.com/science.xml');
     expect(listSections(db).find((section) => section.id === created.id)?.position_index).toBe(0);
+  });
+
+  it('keeps the first stored feed title across re-upserts and fills missing metadata', () => {
+    const db = initDb(tempDbDir());
+    const first = createFeed(db, 'https://example.com/feed.xml', { title: 'Curated Title' });
+    expect(getFeed(db, first.id)?.title).toBe('Curated Title');
+
+    const resynced = createFeed(db, 'https://example.com/feed.xml', { title: 'Feed XML Title', siteUrl: 'https://example.com/' });
+    expect(resynced.id).toBe(first.id);
+    expect(getFeed(db, first.id)).toMatchObject({ title: 'Curated Title', site_url: 'https://example.com/' });
+
+    db.prepare('UPDATE feeds SET title = NULL WHERE id = ?').run(first.id);
+    createFeed(db, 'https://example.com/feed.xml', { title: 'Feed XML Title' });
+    expect(getFeed(db, first.id)?.title).toBe('Feed XML Title');
   });
 
   it('uses item_state as canonical read and important visibility state', () => {

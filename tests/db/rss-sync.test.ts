@@ -103,4 +103,43 @@ describe('canonical RSS sync', () => {
     expect(httpError.error?.code).toBe('http_error');
     expect(db.prepare(`SELECT COUNT(*) AS count FROM fetch_log WHERE feed_id=? AND status='error'`).get(feed.id)).toMatchObject({ count: 2 });
   });
+
+  it('invalidates stale cache validators when a 200 response omits them', async () => {
+    const db = tempDb();
+    const feed = createFeed(db, 'https://example.com/rss.xml');
+    db.prepare(`UPDATE feeds SET etag='stale-etag', last_modified='stale-lm' WHERE id=?`).run(feed.id);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(rss(item('Fresh', 'https://example.com/fresh')), { status: 200 })));
+
+    const result = await syncFeedById(db, feed.id);
+
+    expect(result.status).toBe('ok');
+    expect(getFeed(db, feed.id)?.etag).toBeNull();
+    expect(getFeed(db, feed.id)?.last_modified).toBeNull();
+  });
+
+  it('preserves stored cache validators when a 304 response omits them', async () => {
+    const db = tempDb();
+    const feed = createFeed(db, 'https://example.com/rss.xml');
+    db.prepare(`UPDATE feeds SET etag='stored-etag', last_modified='stored-lm' WHERE id=?`).run(feed.id);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 304 })));
+
+    const result = await syncFeedById(db, feed.id);
+
+    expect(result.status).toBe('not_modified');
+    expect(getFeed(db, feed.id)).toMatchObject({ etag: 'stored-etag', last_modified: 'stored-lm' });
+  });
+
+  it('refuses to refetch a feed while its refresh lock is held', async () => {
+    const db = tempDb();
+    const feed = createFeed(db, 'https://example.com/rss.xml');
+    db.prepare(`UPDATE feeds SET is_fetching=1 WHERE id=?`).run(feed.id);
+    const fetchMock = vi.fn(async () => new Response(rss(item('A', 'https://example.com/a')), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await syncFeedById(db, feed.id);
+
+    expect(result.status).toBe('error');
+    expect(result.error?.code).toBe('feed_in_progress');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

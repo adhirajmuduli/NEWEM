@@ -96,7 +96,7 @@ describe('Stage 6 renderer layout controls', () => {
 
   beforeEach(async () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1000 });
-    api = makeApi({ mode: 'columns', panels: [{ id: 'tech', x: 0, y: 0, w: 50, h: 1 }, { id: 'world', x: 1, y: 0, w: 50, h: 1 }], appearance: { tech: { mode: 'image', imageDataUrl: 'data:image/png;base64,AA==' } } });
+    api = makeApi({ mode: 'mosaic', panels: [{ id: 'tech', x: 0, y: 0, w: 50, h: 1 }, { id: 'world', x: 1, y: 0, w: 50, h: 1 }], appearance: { tech: { mode: 'image', imageDataUrl: 'data:image/png;base64,AA==' } } });
     root = await renderApp(api);
   });
 

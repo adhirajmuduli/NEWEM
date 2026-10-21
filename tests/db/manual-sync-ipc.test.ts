@@ -3,8 +3,9 @@ import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { closeDb, initDb } from '../../app/core/storage/db';
-import { createFeed } from '../../app/core/storage/dao/feedsDao';
+import { createFeed, updateFeedSettings } from '../../app/core/storage/dao/feedsDao';
 import { assignFeedToSection, createSection } from '../../app/core/storage/dao/sectionsDao';
+import { insertItems, markItemRead } from '../../app/core/storage/dao/itemsDao';
 import { registerIpcHandlers } from '../../app/main/ipc';
 
 const tempRoots: string[] = [];
@@ -64,8 +65,12 @@ describe('manual sync IPC', () => {
     const sectionResult = await syncTrigger!(null, { sectionId: section.id });
     expect(sectionResult).toMatchObject({ status: 'ok', scope: 'section', requested: 2, triggered: 2, notModified: 1, errors: 0 });
 
+    updateFeedSettings(db, feedB.id, { muted: true });
+    const mutedResult = await syncTrigger!(null, { sectionId: section.id });
+    expect(mutedResult).toMatchObject({ status: 'ok', scope: 'section', requested: 1, triggered: 1, errors: 0 });
+
     const allResult = await syncTrigger!(null, {});
-    expect(allResult).toMatchObject({ status: 'ok', scope: 'all', requested: 2, triggered: 2, notModified: 1, errors: 0 });
+    expect(allResult).toMatchObject({ status: 'ok', scope: 'all', requested: 1, triggered: 1, ok: 1, errors: 0 });
   });
 
   it('refreshes all requested feeds with a four-request network ceiling', async () => {
@@ -114,5 +119,35 @@ describe('manual sync IPC', () => {
     const synced = await ipc.get('sync:trigger')!(null, { feedId: first.feed.id });
     expect(synced).toMatchObject({ status: 'ok', errors: 0 });
     expect((db.prepare('SELECT COUNT(*) AS count FROM feed_sections WHERE feed_id=? AND section_id=?').get(first.feed.id, section.id) as { count: number }).count).toBe(1);
+  });
+
+  it('aggregates item and unread counts across every listed feed in one response', async () => {
+    const db = tempDb();
+    const section = createSection(db, 'Counts', 0, 'counts');
+    const feedA = createFeed(db, 'https://example.com/a.xml');
+    const feedB = createFeed(db, 'https://example.com/b.xml');
+    assignFeedToSection(db, feedA.id, section.id);
+    assignFeedToSection(db, feedB.id, section.id);
+    insertItems(db, feedA.id, [
+      { link: 'https://example.com/a1', title: 'A1', dedupe_key: 'a1' },
+      { link: 'https://example.com/a2', title: 'A2', dedupe_key: 'a2' },
+    ]);
+    insertItems(db, feedB.id, [{ link: 'https://example.com/b1', title: 'B1', dedupe_key: 'b1' }]);
+    const firstItem = db.prepare('SELECT id FROM items WHERE dedupe_key=?').get('a1') as { id: number };
+    markItemRead(db, firstItem.id);
+
+    const response = await handlers().get('sections:list')!(null, {});
+
+    const wire = (response.sections as any[]).find((row) => row.id === section.id);
+    const totals = (wire.feeds as any[]).reduce(
+      (acc, feed) => ({
+        item_count: acc.item_count + (feed.item_count ?? 0),
+        unread_count: acc.unread_count + (feed.unread_count ?? 0),
+      }),
+      { item_count: 0, unread_count: 0 }
+    );
+    expect(totals).toEqual({ item_count: 3, unread_count: 2 });
+    expect(wire.feeds.find((feed: any) => feed.id === feedA.id)).toMatchObject({ item_count: 2, unread_count: 1 });
+    expect(wire.feeds.find((feed: any) => feed.id === feedB.id)).toMatchObject({ item_count: 1, unread_count: 1 });
   });
 });

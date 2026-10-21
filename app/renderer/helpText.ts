@@ -10,7 +10,6 @@ export const HELP_TEXT = {
   refreshSection: 'Refresh every enabled, unmuted feed in this section now.',
   newsWindow: 'Show articles published within this many days. Stored articles are not deleted.',
   sourceInterval: 'Automatically refresh this source after this many minutes. Suggested: 30 minutes.',
-  muteFeed: 'Muted feeds remain configured but are excluded from automatic and manual refreshes.',
-  disableFeed: 'Disabled feeds remain configured but are excluded from refreshes.',
+  muteFeed: 'Muting silences a source: automatic and manual refreshes skip it, its chip greys out, and existing items and settings are kept. Unmuting brings it back.',
   removeFeed: 'Remove this feed from the current section. The shared source and stored articles are retained if used elsewhere.',
 } as const;

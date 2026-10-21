@@ -76,7 +76,7 @@ export type SectionAppearanceWire = {
   imageDataUrl?: string;
 };
 
-export type LayoutModeWire = 'stack' | 'columns' | 'mosaic' | 'focus';
+export type LayoutModeWire = 'stack' | 'mosaic';
 
 export type LayoutWire = {
   mode?: LayoutModeWire;
