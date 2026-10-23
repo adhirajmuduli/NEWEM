@@ -9,13 +9,35 @@ import {
 } from '../../app/shared/colorSchemes';
 
 describe('reusable color schemes', () => {
-  it('exposes only the dark READIT palette while preserving disabled definitions', () => {
-    expect(COLOR_SCHEMES).toHaveLength(1);
+  it('exposes the READIT palette plus nine production themes while preserving disabled definitions', () => {
+    expect(COLOR_SCHEMES).toHaveLength(10);
     expect(COLOR_SCHEMES[0].id).toBe('readit');
     expect(DISABLED_COLOR_SCHEMES).toHaveLength(22);
     expect(COLOR_SCHEMES[0].colors).not.toContain('#1f9d55');
     expect(COLOR_SCHEMES[0].margin).toBe('#080b10');
+    expect(COLOR_SCHEMES.map((scheme) => scheme.id)).toEqual([
+      'readit',
+      'slate-indigo',
+      'midnight-teal',
+      'graphite-amber',
+      'soft-blue-gray',
+      'warm-paper',
+      'sage-mist',
+      'dusty-lavender',
+      'stone-clay',
+      'stone-clay-light',
+    ]);
   });
+
+  it('honors explicit border tokens when a theme provides them', () => {
+    const slate = colorSchemeVariables('slate-indigo');
+    expect(slate['--border']).toBe('#2a2e37');
+    expect(slate['--manager-border']).toBe('#2a2e37');
+    expect(slate['--card-border']).toBe('#2a2e37');
+    const stone = colorSchemeVariables('stone-clay');
+    expect(stone['--border']).not.toBe('#2a2e37');
+  });
+
   it('derives contrast-safe text for every semantic surface', () => {
     for (const scheme of COLOR_SCHEMES) {
       const variables = colorSchemeVariables(scheme.id);

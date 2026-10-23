@@ -18,7 +18,6 @@ export interface ItemRow {
   description?: string | null;
   published_at?: string | null;
   dedupe_key: string;
-  seen_at?: string | null;
   created_at: string;
   feed_title?: string | null;
   site_url?: string | null;
@@ -118,13 +117,28 @@ export function toggleItemImportant(db: Database.Database, itemId: number): 0 | 
   return next as 0 | 1;
 }
 
+export const ITEM_PAGE_HARD_CAP = 1000;
+
+export type ItemsQueryOptions = {
+  includeSeen?: boolean;
+  all?: boolean;
+  limit?: number;
+  before?: string | null;
+  query?: string;
+  feedId?: number;
+  importantOnly?: boolean;
+  unreadOnly?: boolean;
+  publishedAfter?: string | null;
+  publishedBefore?: string | null;
+};
+
 export function getItemsBySection(
   db: Database.Database,
   sectionId: number,
-  opts?: { includeSeen?: boolean; all?: boolean; limit?: number; before?: string | null; query?: string; feedId?: number; importantOnly?: boolean; unreadOnly?: boolean; publishedAfter?: string | null; publishedBefore?: string | null }
+  opts?: ItemsQueryOptions
 ) {
   const includeSeen = opts?.includeSeen ?? false;
-  const limit = opts?.all ? null : Math.max(1, Math.min(200, opts?.limit ?? 50));
+  const limit = opts?.all ? (opts?.limit ?? null) : Math.max(1, Math.min(200, opts?.limit ?? 50));
   const clauses: string[] = [];
   const itemTime = `CASE WHEN i.published_at GLOB '????-??-??T??:??:??*' THEN i.published_at ELSE i.created_at END`;
   if (sectionId > 0) {
@@ -162,6 +176,20 @@ export function getItemsBySection(
   if (opts?.publishedBefore) parameters.publishedBefore = opts.publishedBefore;
   if (opts?.query?.trim()) parameters.queryLike = `%${opts.query.trim().toLowerCase()}%`;
   return stmt.all(parameters) as ItemRow[];
+}
+
+export function querySectionItems(
+  db: Database.Database,
+  sectionId: number,
+  opts?: ItemsQueryOptions
+): { items: ItemRow[]; truncated: boolean } {
+  const uncapped = opts?.all === true;
+  const rows = getItemsBySection(db, sectionId, uncapped ? { ...opts, limit: ITEM_PAGE_HARD_CAP + 1 } : opts);
+  const truncated = uncapped && rows.length > ITEM_PAGE_HARD_CAP;
+  return {
+    items: truncated ? rows.slice(0, ITEM_PAGE_HARD_CAP) : rows,
+    truncated,
+  };
 }
 
 export {};

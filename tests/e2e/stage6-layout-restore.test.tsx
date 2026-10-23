@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+﻿// @vitest-environment jsdom
 import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
@@ -15,7 +15,7 @@ function section(id: number, key: string, name: string): SectionWire {
 function apiWithLayout(layoutRef: { current: LayoutWire }): PreloadApi {
   const sections = [section(1, 'tech', 'Tech'), section(2, 'world', 'World')];
   return {
-    version: 1,
+    version: 2,
     listSections: vi.fn(async () => ({ sections })),
     createSection: vi.fn(async () => ({ changed: 0 })),
     updateSection: vi.fn(async () => ({ changed: 0 })),
@@ -27,11 +27,9 @@ function apiWithLayout(layoutRef: { current: LayoutWire }): PreloadApi {
     testFeed: vi.fn(async () => ({ status: 'ok' as const })),
     syncTrigger: vi.fn(async () => ({ status: 'ok' as const, scope: 'all' as const, requested: 0, triggered: 0, ok: 0, notModified: 0, errors: 0, newItems: 0, results: [] })),
     queryItems: vi.fn(async () => ({ items: [] })),
-    markItemsSeen: vi.fn(async () => ({ changed: 0 })),
     markSectionSeen: vi.fn(async () => ({ changed: 0 })),
     markItemRead: vi.fn(async () => ({ changed: 0 })),
     toggleItemImportant: vi.fn(async () => ({ is_important: 1 as const })),
-    queryImportant: vi.fn(async () => ({ items: [] })),
     getLayout: vi.fn(async () => ({ layout: layoutRef.current })),
     setLayout: vi.fn(async ({ layout }) => {
       layoutRef.current = layout;

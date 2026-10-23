@@ -26,7 +26,7 @@ import {
   unassignFeedFromSection,
   type Section,
 } from '../core/storage/dao/sectionsDao';
-import { getItemsBySection, markSeen as markItemsSeen, markSectionSeen, ItemRow, markItemRead, toggleItemImportant } from '../core/storage/dao/itemsDao';
+import { markSectionSeen, markItemRead, toggleItemImportant, querySectionItems } from '../core/storage/dao/itemsDao';
 import { getLayout, getShowSeen, setLayout } from '../core/storage/dao/settingsDao';
 import { resolveFeedInput } from '../core/rss/discovery';
 import { syncAllFeeds, syncFeeds, syncSection, type ManualSyncResult, type SyncProgress } from '../core/rss/sync';
@@ -239,26 +239,10 @@ function validateItemId(value: unknown): MarkItemReadPayload {
   return { itemId: numberValue(payload.itemId, 'payload.itemId', { integer: true, min: 1 }) };
 }
 
-function validateMarkItemsSeen(value: unknown) {
-  const payload = optionalPayload(value);
-  rejectUnknown(payload, ['itemIds'], 'payload');
-  if (!Array.isArray(payload.itemIds)) throw new Error('payload.itemIds must be an array');
-  return { itemIds: payload.itemIds.map((id, index) => numberValue(id, `payload.itemIds[${index}]`, { integer: true, min: 1 })) };
-}
-
 function validateMarkSectionSeen(value: unknown) {
   const payload = optionalPayload(value);
   rejectUnknown(payload, ['sectionId'], 'payload');
   return { sectionId: numberValue(payload.sectionId, 'payload.sectionId', { integer: true, min: 1 }) };
-}
-
-function validateImportantQuery(value: unknown) {
-  const payload = optionalPayload(value);
-  rejectUnknown(payload, ['limit', 'before'], 'payload');
-  return {
-    limit: optionalNumber(payload.limit, 'payload.limit', { integer: true, min: 1, max: 200 }),
-    before: payload.before === null ? null : optionalString(payload.before, 'payload.before', { min: 1, max: 80 }),
-  };
 }
 
 function validateLayoutSet(value: unknown): LayoutSetPayload {
@@ -384,40 +368,17 @@ export function registerIpcHandlers(ipc: IpcMainLike) {
   handleValidated(ipc, 'items:query', validateItemsQuery, passthroughResponse, (payload) => {
     const db = getDb();
     const includeSeen = payload.includeSeen ?? getShowSeen(db);
-    const items = getItemsBySection(db, payload.sectionId, {
+    const { items, truncated } = querySectionItems(db, payload.sectionId, {
       includeSeen, all: payload.all, limit: payload.limit, before: payload.before ?? null, query: payload.query, feedId: payload.feedId,
       importantOnly: payload.importantOnly, unreadOnly: payload.unreadOnly,
       publishedAfter: payload.publishedAfter ?? null, publishedBefore: payload.publishedBefore ?? null,
     });
-    return { items };
+    return { items, truncated };
   });
 
-  handleValidated(ipc, 'items:markSeen', validateMarkItemsSeen, passthroughResponse, (payload) => ({ changed: markItemsSeen(getDb(), payload.itemIds) }));
   handleValidated(ipc, 'sections:markSeen', validateMarkSectionSeen, passthroughResponse, (payload) => ({ changed: markSectionSeen(getDb(), payload.sectionId) }));
   handleValidated(ipc, 'items:markRead', validateItemId, passthroughResponse, (payload) => ({ changed: markItemRead(getDb(), payload.itemId) }));
-  handleValidated(ipc, 'item:markRead', validateItemId, passthroughResponse, (payload) => ({ changed: markItemRead(getDb(), payload.itemId) }));
   handleValidated(ipc, 'items:toggleImportant', validateItemId, passthroughResponse, (payload) => ({ is_important: toggleItemImportant(getDb(), payload.itemId) }));
-  handleValidated(ipc, 'item:toggleImportant', validateItemId, passthroughResponse, (payload) => ({ is_important: toggleItemImportant(getDb(), payload.itemId) }));
-
-  handleValidated(ipc, 'items:important', validateImportantQuery, passthroughResponse, (payload) => {
-    const db = getDb();
-    const limit = Math.max(1, Math.min(200, payload?.limit ?? 50));
-    const beforeClause = payload?.before ? 'AND i.published_at < @before' : '';
-    const stmt = db.prepare(
-      `SELECT i.*, f.title AS feed_title, f.site_url,
-              COALESCE(s.is_read, 0) AS is_read,
-              COALESCE(s.is_important, 0) AS is_important,
-              s.read_at
-       FROM items i
-       JOIN feeds f ON f.id = i.feed_id
-       JOIN item_state s ON s.item_id = i.id AND s.is_important = 1
-       WHERE 1=1 ${beforeClause}
-       ORDER BY COALESCE(i.published_at, i.created_at) DESC
-       LIMIT @limit`
-    );
-    const items = stmt.all({ limit, before: payload?.before ?? null }) as ItemRow[];
-    return { items };
-  });
 
   handleValidated(ipc, 'portability:exportOpml', () => ({}), passthroughResponse, () => ({ opml: exportOpml(getDb()) }));
   handleValidated(ipc, 'portability:importOpml', validateOpmlImport, passthroughResponse, (payload) => {

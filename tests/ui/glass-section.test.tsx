@@ -33,10 +33,10 @@ function panel(overrides: Partial<React.ComponentProps<typeof SectionPanel>> = {
       warning={null}
       onDayWindowChange={vi.fn()}
       onRefresh={vi.fn()}
+      onLoadOlder={vi.fn()}
       onMarkSeen={vi.fn()}
       openExternalItem={vi.fn()}
       onToggleImportant={vi.fn()}
-      onToggleFeed={vi.fn()}
       onToggleMute={vi.fn()}
       onUpdateInterval={vi.fn()}
       onRemoveFeed={vi.fn()}
@@ -119,6 +119,20 @@ describe('section news work surface', () => {
     await act(async () => (document.querySelector('.load-more-items') as HTMLButtonElement).click());
     expect(document.querySelectorAll('.item-card')).toHaveLength(161);
     expect(document.querySelector('.load-more-items')).toBeNull();
+  });
+
+  it('offers a load-older affordance only when the section query was truncated', async () => {
+    const onLoadOlder = vi.fn();
+    document.body.innerHTML = '<div id="root"></div>';
+    root = createRoot(document.getElementById('root')!);
+    await act(async () => root.render(panel({ hasOlder: true, onLoadOlder })));
+    const older = document.querySelector('button.load-older') as HTMLButtonElement;
+    expect(older).toBeTruthy();
+    await act(async () => older.click());
+    expect(onLoadOlder).toHaveBeenCalledWith(section.id);
+
+    await act(async () => root.render(panel({ hasOlder: false, onLoadOlder })));
+    expect(document.querySelector('button.load-older')).toBeNull();
   });
   it('defines static glass, bento, scroll containment, and increased section height', () => {
     const css = fs.readFileSync(path.resolve(process.cwd(), 'app', 'renderer', 'styles', 'app.css'), 'utf8');

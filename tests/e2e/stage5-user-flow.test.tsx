@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+﻿// @vitest-environment jsdom
 import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
@@ -43,7 +43,7 @@ describe('Stage 5 e2e user-managed feed flow', () => {
     sections = [];
     items = [];
     const api: PreloadApi = {
-      version: 1,
+      version: 2,
       listSections: vi.fn(async () => ({ sections })),
       createSection: vi.fn(async ({ name }) => {
         const section: SectionWire = { id: 1, key: 'research', name, position_index: 0, feeds: [] };
@@ -67,11 +67,9 @@ describe('Stage 5 e2e user-managed feed flow', () => {
         return { status: 'ok' as const, scope: 'section' as const, requested: 1, triggered: 1, ok: 1, notModified: 0, errors: 0, newItems: 1, results: [] };
       }),
       queryItems: vi.fn(async () => ({ items })),
-      markItemsSeen: vi.fn(async () => ({ changed: 0 })),
       markSectionSeen: vi.fn(async () => ({ changed: 0 })),
       markItemRead: vi.fn(async () => ({ changed: 1 })),
       toggleItemImportant: vi.fn(async () => ({ is_important: 1 as const })),
-      queryImportant: vi.fn(async () => ({ items: [] })),
       getLayout: vi.fn(async () => ({ layout: { mode: 'stack' as const, panels: [], appearance: {} } })),
       setLayout: vi.fn(async ({ layout }) => ({ layout })),
       onSyncProgress: vi.fn(() => () => {}),

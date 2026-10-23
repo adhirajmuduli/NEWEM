@@ -10,13 +10,4 @@ export function buildConditionalHeaders(cache: CacheState) {
   return headers;
 }
 
-export function extractCacheFromHeaders(headers: Headers | Map<string, string>) {
-  const get = (k: string) =>
-    headers instanceof Map ? headers.get(k.toLowerCase()) : headers.get(k) ?? headers.get(k.toLowerCase());
-  return {
-    etag: get('etag') || undefined,
-    last_modified: get('last-modified') || undefined,
-  } as CacheState;
-}
-
 export {};

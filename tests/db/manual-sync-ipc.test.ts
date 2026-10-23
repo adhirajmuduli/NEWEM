@@ -1,12 +1,13 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { closeDb, initDb } from '../../app/core/storage/db';
 import { createFeed, updateFeedSettings } from '../../app/core/storage/dao/feedsDao';
 import { assignFeedToSection, createSection } from '../../app/core/storage/dao/sectionsDao';
 import { insertItems, markItemRead } from '../../app/core/storage/dao/itemsDao';
 import { registerIpcHandlers } from '../../app/main/ipc';
+import { setHostLookupOverride } from '../../app/core/rss/dnsGuard';
 
 const tempRoots: string[] = [];
 
@@ -30,7 +31,12 @@ function handlers() {
   return map;
 }
 
+beforeEach(() => {
+  setHostLookupOverride(async () => ['203.0.113.10']);
+});
+
 afterEach(() => {
+  setHostLookupOverride(null);
   vi.restoreAllMocks();
   closeDb();
   while (tempRoots.length > 0) {

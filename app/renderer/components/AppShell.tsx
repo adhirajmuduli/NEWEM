@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react';
 import { applyColorScheme, COLOR_SCHEMES, DEFAULT_COLOR_SCHEME_ID, getColorScheme } from '../../shared/colorSchemes';
 import type { ColorSchemeId } from '../../shared/colorSchemes';
@@ -18,7 +18,7 @@ declare global {
   }
 }
 
-type ItemState = Record<number, { loading: boolean; error: string | null; warning: string | null; items: ItemWire[] }>;
+type ItemState = Record<number, { loading: boolean; error: string | null; warning: string | null; items: ItemWire[]; hasOlder: boolean }>;
 type FeedTestState = { url: string; resolvedUrl?: string; status: 'idle' | 'testing' | 'ok' | 'error'; message: string };
 
 function api() {
@@ -26,8 +26,14 @@ function api() {
   return window.readit;
 }
 
+const ISO_LIKE_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
+
+function itemSortTime(item: ItemWire) {
+  return item.published_at && ISO_LIKE_TIMESTAMP.test(item.published_at) ? item.published_at : item.created_at;
+}
+
 function emptyItems(sections: SectionWire[]): ItemState {
-  return Object.fromEntries(sections.map((section) => [section.id, { loading: false, error: null, warning: null, items: [] }]));
+  return Object.fromEntries(sections.map((section) => [section.id, { loading: false, error: null, warning: null, items: [], hasOlder: false }]));
 }
 
 function refreshWarning(triggered: number, errors: number) {
@@ -103,7 +109,7 @@ export function AppShell() {
     setItems((current) => {
       const next: ItemState = {};
       for (const section of response.sections) {
-        next[section.id] = current[section.id] ?? { loading: false, error: null, warning: null, items: [] };
+        next[section.id] = current[section.id] ?? { loading: false, error: null, warning: null, items: [], hasOlder: false };
       }
       return next;
     });
@@ -122,16 +128,48 @@ export function AppShell() {
   async function loadItems(sectionId: number) {
     const seq = (loadSeq.current.get(sectionId) ?? 0) + 1;
     loadSeq.current.set(sectionId, seq);
-    setItems((current) => ({ ...current, [sectionId]: { ...(current[sectionId] || { items: [], warning: null }), loading: true, error: null } }));
+    setItems((current) => ({ ...current, [sectionId]: { ...(current[sectionId] || { items: [], warning: null, hasOlder: false }), loading: true, error: null } }));
     try {
       const response = await api().queryItems({ sectionId, all: true });
       if (loadSeq.current.get(sectionId) !== seq) return;
-      setItems((current) => ({ ...current, [sectionId]: { loading: false, error: null, warning: current[sectionId]?.warning || null, items: response.items } }));
+      setItems((current) => ({ ...current, [sectionId]: { loading: false, error: null, warning: current[sectionId]?.warning || null, items: response.items, hasOlder: response.truncated ?? false } }));
     } catch (err) {
       if (loadSeq.current.get(sectionId) !== seq) return;
       setItems((current) => ({
         ...current,
-        [sectionId]: { ...(current[sectionId] || { items: [], warning: null }), loading: false, error: err instanceof Error ? err.message : String(err) },
+        [sectionId]: { ...(current[sectionId] || { items: [], warning: null, hasOlder: false }), loading: false, error: err instanceof Error ? err.message : String(err) },
+      }));
+    }
+  }
+
+  async function loadOlder(sectionId: number) {
+    const currentItems = items[sectionId]?.items ?? [];
+    if (currentItems.length === 0) return;
+    let oldest = currentItems[0];
+    for (const candidate of currentItems) {
+      if (itemSortTime(candidate) < itemSortTime(oldest)) oldest = candidate;
+    }
+    const before = itemSortTime(oldest);
+    const seq = (loadSeq.current.get(sectionId) ?? 0) + 1;
+    loadSeq.current.set(sectionId, seq);
+    setItems((current) => ({ ...current, [sectionId]: { ...current[sectionId], loading: true, error: null } }));
+    try {
+      const response = await api().queryItems({ sectionId, all: true, before });
+      if (loadSeq.current.get(sectionId) !== seq) return;
+      setItems((current) => {
+        const existing = current[sectionId]?.items ?? [];
+        const existingIds = new Set(existing.map((item) => item.id));
+        const appended = response.items.filter((item) => !existingIds.has(item.id));
+        return {
+          ...current,
+          [sectionId]: { ...current[sectionId], loading: false, error: null, items: [...existing, ...appended], hasOlder: response.truncated ?? false },
+        };
+      });
+    } catch (err) {
+      if (loadSeq.current.get(sectionId) !== seq) return;
+      setItems((current) => ({
+        ...current,
+        [sectionId]: { ...current[sectionId], loading: false, error: err instanceof Error ? err.message : String(err) },
       }));
     }
   }
@@ -360,7 +398,7 @@ export function AppShell() {
   async function refreshSection(sectionId: number) {
     setItems((current) => ({
       ...current,
-      [sectionId]: { ...(current[sectionId] || { items: [] }), loading: true, error: null, warning: null },
+      [sectionId]: { ...(current[sectionId] || { items: [], hasOlder: false }), loading: true, error: null, warning: null },
     }));
     try {
       const response = await api().syncTrigger({ sectionId });
@@ -369,7 +407,7 @@ export function AppShell() {
       setItems((current) => ({
         ...current,
         [sectionId]: {
-          ...(current[sectionId] || { items: [] }),
+          ...(current[sectionId] || { items: [], hasOlder: false }),
           loading: false,
           error: null,
           warning: refreshWarning(response.triggered, response.errors),
@@ -379,7 +417,7 @@ export function AppShell() {
       setItems((current) => ({
         ...current,
         [sectionId]: {
-          ...(current[sectionId] || { items: [] }),
+          ...(current[sectionId] || { items: [], hasOlder: false }),
           loading: false,
           error: `Refresh could not complete: ${err instanceof Error ? err.message : String(err)}`,
           warning: null,
@@ -426,7 +464,7 @@ export function AppShell() {
     setItems((current) => ({
       ...current,
       [sectionId]: {
-        ...(current[sectionId] || { loading: false, error: null, warning: null, items: [] }),
+        ...(current[sectionId] || { loading: false, error: null, warning: null, items: [], hasOlder: false }),
         items: (current[sectionId]?.items || []).map((row) => row.id === item.id ? { ...row, is_important: response.is_important } : row),
       },
     }));
@@ -619,6 +657,27 @@ export function AppShell() {
             <div className="manager-pane manager-top-pane">
               <div className="manager-pane-scroll">
                 <div className="manager-block">
+                  <h2>Theme</h2>
+                  <label className="theme-picker">
+                    <span>App colour scheme</span>
+                    <select
+                      aria-label="App colour scheme"
+                      value={colorScheme.id}
+                      onChange={(event) => {
+                        const theme = event.currentTarget.value as ColorSchemeId;
+                        void run(() => updateColorScheme(theme));
+                      }}
+                    >
+                      {COLOR_SCHEMES.map((scheme) => <option key={scheme.id} value={scheme.id}>{scheme.label}</option>)}
+                    </select>
+                  </label>
+                  <div className="theme-swatches" aria-hidden="true">
+                    {colorScheme.colors.map((color, index) => <span key={index} style={{ backgroundColor: color }} />)}
+                    <span style={{ backgroundColor: colorScheme.margin }} />
+                  </div>
+                </div>
+
+                <div className="manager-block">
                   <h2>Sections</h2>
                   <div className="section-selector" role="list" aria-label="Sections">
                     {sections.map((section) => (
@@ -710,23 +769,6 @@ export function AppShell() {
 
                     <div className="manager-block">
                       <h2>Appearance</h2>
-                      <label className="theme-picker">
-                        <span>App colour scheme</span>
-                        <select
-                          aria-label="App colour scheme"
-                          value={colorScheme.id}
-                          onChange={(event) => {
-                            const theme = event.currentTarget.value as ColorSchemeId;
-                            void run(() => updateColorScheme(theme));
-                          }}
-                        >
-                          {COLOR_SCHEMES.map((scheme) => <option key={scheme.id} value={scheme.id}>{scheme.label}</option>)}
-                        </select>
-                      </label>
-                      <div className="theme-swatches" aria-hidden="true">
-                        {colorScheme.colors.map((color, index) => <span key={index} style={{ backgroundColor: color }} />)}
-                        <span style={{ backgroundColor: colorScheme.margin }} />
-                      </div>
                       <AppearanceEditor
                         key={selectedSection.key}
                         sectionKey={selectedSection.key}
@@ -761,7 +803,7 @@ export function AppShell() {
           {sections.length === 0 ? (
             <div className="empty-app">No sections exist yet. Open Manage and create your first section.</div>
           ) : orderedSections.map((section, index) => {
-            const state = items[section.id] || { loading: false, error: null, warning: null, items: [] };
+            const state = items[section.id] || { loading: false, error: null, warning: null, items: [], hasOlder: false };
             const width = panelWidth(layout, section.key);
             return (
               <div
@@ -780,11 +822,13 @@ export function AppShell() {
                   loading={state.loading}
                   error={state.error}
                   warning={state.warning}
+                  hasOlder={state.hasOlder}
                   progress={syncProgress[section.id] ?? globalProgress}
                   appearance={layout.appearance?.[section.key]}
                   dayWindow={layout.dayWindows?.[section.key]}
                   onDayWindowChange={(sectionKey, days) => void run(() => updateSectionDayWindow(sectionKey, days))}
                   onRefresh={(sectionId) => void refreshSection(sectionId)}
+                  onLoadOlder={(sectionId) => void loadOlder(sectionId)}
                   onMarkSeen={(sectionId) => void run(() => markSectionSeen(sectionId))}
                   openExternalItem={(sectionId, item) => void run(() => openItem(sectionId, item))}
                   onToggleImportant={(sectionId, item) => void run(() => toggleImportant(sectionId, item))}

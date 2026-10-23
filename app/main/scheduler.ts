@@ -21,7 +21,12 @@ export function nextDueAt(feed: Feed) {
   if (!feed.last_fetched_at) return 0;
   const last = Date.parse(feed.last_fetched_at);
   if (Number.isNaN(last)) return 0;
-  return last + minutesToMs(Math.max(MIN_INTERVAL_MINUTES, feed.fetch_interval_minutes ?? DEFAULT_INTERVAL_MINUTES));
+  let due = last + minutesToMs(Math.max(MIN_INTERVAL_MINUTES, feed.fetch_interval_minutes ?? DEFAULT_INTERVAL_MINUTES));
+  if (feed.next_retry_at) {
+    const retry = Date.parse(feed.next_retry_at);
+    if (!Number.isNaN(retry)) due = Math.max(due, retry);
+  }
+  return due;
 }
 
 export async function runWithConcurrency<T>(
@@ -146,10 +151,3 @@ export class Scheduler {
 
 export const scheduler = new Scheduler();
 
-export function startScheduler() {
-  scheduler.start();
-}
-
-export function stopScheduler() {
-  scheduler.stop();
-}

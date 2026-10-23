@@ -1,6 +1,6 @@
 import type { ColorSchemeId } from './colorSchemes';
 
-export const PRELOAD_API_VERSION = 1 as const;
+export const PRELOAD_API_VERSION = 2 as const;
 
 export type ApiEnvelope<T> = { apiVersion: typeof PRELOAD_API_VERSION; data: T };
 
@@ -60,7 +60,6 @@ export type ItemWire = {
   description?: string | null;
   published_at?: string | null;
   dedupe_key: string;
-  seen_at?: string | null;
   created_at: string;
   feed_title?: string | null;
   site_url?: string | null;
@@ -103,17 +102,13 @@ export type FeedTestResponse = { status: 'ok' | 'error'; feedUrl?: string; disco
 export type ApplicationQuitResponse = { closing: true };
 
 export type ItemsQueryPayload = { sectionId: number; all?: boolean; limit?: number; before?: string | null; includeSeen?: boolean; query?: string; feedId?: number; importantOnly?: boolean; unreadOnly?: boolean; publishedAfter?: string | null; publishedBefore?: string | null };
-export type ItemsQueryResponse = { items: ItemWire[] };
-export type MarkItemsSeenPayload = { itemIds: number[] };
-export type MarkItemsSeenResponse = { changed: number };
+export type ItemsQueryResponse = { items: ItemWire[]; truncated?: boolean };
 export type MarkSectionSeenPayload = { sectionId: number };
 export type MarkSectionSeenResponse = { changed: number };
 export type MarkItemReadPayload = { itemId: number };
 export type MarkItemReadResponse = { changed: number };
 export type ToggleItemImportantPayload = { itemId: number };
 export type ToggleItemImportantResponse = { is_important: 0 | 1 };
-export type ImportantItemsQueryPayload = { limit?: number; before?: string | null };
-export type ImportantItemsQueryResponse = { items: ItemWire[] };
 export type ExternalOpenPayload = { url: string };
 export type ExternalOpenResponse = { opened: boolean; error?: { code: string; message: string } };
 export type LayoutGetResponse = { layout: LayoutWire };
@@ -140,11 +135,9 @@ export interface PreloadApi {
   onSyncProgress(listener: (progress: SyncProgressWire) => void): () => void;
   onSyncCompleted?(listener: (event: SyncCompletedWire) => void): () => void;
   queryItems(payload: ItemsQueryPayload): Promise<ItemsQueryResponse>;
-  markItemsSeen(payload: MarkItemsSeenPayload): Promise<MarkItemsSeenResponse>;
   markSectionSeen(payload: MarkSectionSeenPayload): Promise<MarkSectionSeenResponse>;
   markItemRead(payload: MarkItemReadPayload): Promise<MarkItemReadResponse>;
   toggleItemImportant(payload: ToggleItemImportantPayload): Promise<ToggleItemImportantResponse>;
-  queryImportant(payload?: ImportantItemsQueryPayload): Promise<ImportantItemsQueryResponse>;
   getLayout(): Promise<LayoutGetResponse>;
   setLayout(payload: LayoutSetPayload): Promise<LayoutSetResponse>;
   openExternal(payload: ExternalOpenPayload): Promise<ExternalOpenResponse>;

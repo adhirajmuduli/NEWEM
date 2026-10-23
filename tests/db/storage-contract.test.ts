@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
-import { closeDb, initDb, listMigrationFiles } from '../../app/core/storage/db';
+import { applyMigrations, closeDb, initDb, listMigrationFiles } from '../../app/core/storage/db';
 import { createFeed, getFeed, markFeedError, markFeedFetched, tryLockFeed } from '../../app/core/storage/dao/feedsDao';
 import {
   assignFeedToSection,
@@ -18,6 +18,7 @@ import {
   insertItems,
   markItemRead,
   markSectionSeen,
+  querySectionItems,
   toggleItemImportant,
 } from '../../app/core/storage/dao/itemsDao';
 import { logFetch } from '../../app/core/rss/persist';
@@ -56,6 +57,10 @@ describe('storage migrations', () => {
     expect(db.prepare(`SELECT value_json FROM settings WHERE key='layout'`).get()).toBeTruthy();
     expect(listSections(db).length).toBeGreaterThan(0);
     expect(db.prepare(`SELECT name FROM sqlite_master WHERE type='index' AND name='idx_item_state_cover'`).get()).toBeTruthy();
+    expect(tableColumns(db, 'feeds').has('consecutive_failures')).toBe(true);
+    expect(tableColumns(db, 'feeds').has('next_retry_at')).toBe(true);
+    expect(tableColumns(db, 'items').has('seen_at')).toBe(false);
+    expect(tableColumns(db, 'feeds').has('last_seen_at')).toBe(false);
   });
 
   it('upgrades older databases with seen_at, missing section keys, and optional fetch_error', () => {
@@ -144,6 +149,26 @@ describe('storage migrations', () => {
     expect(listSections(db)).toHaveLength(15);
     expect(listSections(db).some((row) => row.name === 'Legacy Section')).toBe(true);
   });
+
+  it('prunes fetch_log rows beyond the retention window and row cap on every boot', () => {
+    const db = initDb(tempDbDir());
+    const insert = db.prepare(
+      `INSERT INTO fetch_log (feed_id, status, http_status, fetched_at, duration_ms, message) VALUES (NULL, 'ok', 200, ?, NULL, NULL)`
+    );
+    const now = new Date().toISOString();
+    db.transaction(() => {
+      for (let index = 0; index < 3; index += 1) insert.run('2020-01-01T00:00:00.000Z');
+      for (let index = 0; index < 10_001; index += 1) insert.run(now);
+    })();
+    expect((db.prepare('SELECT COUNT(*) AS count FROM fetch_log').get() as { count: number }).count).toBe(10_004);
+
+    applyMigrations(db);
+
+    expect((db.prepare('SELECT COUNT(*) AS count FROM fetch_log').get() as { count: number }).count).toBe(10_000);
+    expect(
+      (db.prepare(`SELECT COUNT(*) AS count FROM fetch_log WHERE fetched_at < strftime('%Y-%m-%dT%H:%M:%fZ','now','-30 days')`).get() as { count: number }).count
+    ).toBe(0);
+  });
 });
 
 describe('storage DAOs', () => {
@@ -173,6 +198,36 @@ describe('storage DAOs', () => {
     db.prepare('UPDATE feeds SET title = NULL WHERE id = ?').run(first.id);
     createFeed(db, 'https://example.com/feed.xml', { title: 'Feed XML Title' });
     expect(getFeed(db, first.id)?.title).toBe('Feed XML Title');
+  });
+
+  it('caps uncapped section queries at a hard ceiling and pages older items by cursor', () => {
+    const db = initDb(tempDbDir());
+    const section = createSection(db, 'Cap', 0, 'cap');
+    const feed = createFeed(db, 'https://example.com/cap.xml');
+    assignFeedToSection(db, feed.id, section.id);
+    const rows = Array.from({ length: 1003 }, (_, index) => ({
+      link: `https://example.com/${index}`,
+      title: `Item ${index}`,
+      dedupe_key: `cap-${index}`,
+      published_at: new Date(Date.now() - index * 60_000).toISOString(),
+    }));
+    insertItems(db, feed.id, rows);
+
+    const first = querySectionItems(db, section.id, { all: true });
+    expect(first.items).toHaveLength(1000);
+    expect(first.truncated).toBe(true);
+
+    const oldestLoaded = first.items[first.items.length - 1];
+    const second = querySectionItems(db, section.id, { all: true, before: oldestLoaded.published_at ?? null });
+    expect(second.items).toHaveLength(3);
+    expect(second.truncated).toBe(false);
+
+    const ids = new Set([...first.items, ...second.items].map((item) => item.id));
+    expect(ids.size).toBe(1003);
+
+    const bounded = querySectionItems(db, section.id, { includeSeen: true, all: false, limit: 5 });
+    expect(bounded.items).toHaveLength(5);
+    expect(bounded.truncated).toBe(false);
   });
 
   it('uses item_state as canonical read and important visibility state', () => {

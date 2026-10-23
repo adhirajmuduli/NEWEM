@@ -37,7 +37,7 @@ describe('Stage 7 renderer workflows', () => {
     let progressListener: ((progress: SyncProgressWire) => void) | undefined;
     let completedListener: ((event: SyncCompletedWire) => void) | undefined;
     const api: PreloadApi = {
-      version: 1,
+      version: 2,
       listSections: vi.fn(async () => ({ sections: [{
         id: 1,
         key: 'science',
@@ -61,11 +61,9 @@ describe('Stage 7 renderer workflows', () => {
       onSyncProgress: vi.fn((listener) => { progressListener = listener; return () => { progressListener = undefined; }; }),
       onSyncCompleted: vi.fn((listener) => { completedListener = listener; return () => { completedListener = undefined; }; }),
       queryItems: vi.fn(async () => ({ items: [] })),
-      markItemsSeen: vi.fn(async () => ({ changed: 0 })),
       markSectionSeen: vi.fn(async () => ({ changed: 0 })),
       markItemRead: vi.fn(async () => ({ changed: 0 })),
       toggleItemImportant: vi.fn(async () => ({ is_important: 1 as const })),
-      queryImportant: vi.fn(async () => ({ items: [] })),
       getLayout: vi.fn(async () => ({ layout: { mode: 'stack' as const, panels: [], appearance: {} } })),
       setLayout: vi.fn(async ({ layout }) => ({ layout })),
       openExternal: vi.fn(async () => ({ opened: true })),
@@ -119,7 +117,7 @@ describe('Stage 7 renderer workflows', () => {
     const expandSources = document.querySelector('[aria-label="Expand feed sources"]') as HTMLButtonElement;
     await act(async () => expandSources.click());
     await click('Mute');
-    expect(api.updateFeed).toHaveBeenCalledWith({ feedId: 7, muted: true });
+    expect(api.updateFeed).toHaveBeenCalledWith({ feedId: 7, muted: true, enabled: true });
 
     await act(async () => progressListener?.({ scope: 'section', sectionId: 1, completed: 1, total: 2, percent: 50, feedId: 7 }));
     expect(document.querySelector('progress')?.getAttribute('value')).toBe('50');

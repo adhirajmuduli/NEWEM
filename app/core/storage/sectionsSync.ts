@@ -116,11 +116,3 @@ export function syncCatalogVersionIfNeeded(db: Database.Database) {
   }
   return db.transaction(() => applyCatalog(db, true))();
 }
-
-export function syncSectionsFromConfig(db: Database.Database) {
-  return db.transaction(() => applyCatalog(db, false))();
-}
-
-export function seedSectionsFromConfigIfEmpty(db: Database.Database) {
-  return syncCatalogVersionIfNeeded(db);
-}

@@ -1,5 +1,6 @@
 import { buildConditionalHeaders } from './cache';
 import { normalizeFeedUrl } from './url';
+import { resolvePublicHost, type HostLookup } from './dnsGuard';
 
 export type FetchStatus = 'ok' | 'not_modified' | 'error';
 export type FetchErrorCode =
@@ -16,6 +17,7 @@ export type FetchErrorCode =
 export type FetchError = {
   code: FetchErrorCode;
   message: string;
+  retryAfterSeconds?: number | null;
 };
 
 export type FetchResponse = {
@@ -35,6 +37,7 @@ export type FetchFeedOptions = {
   timeoutMs?: number;
   maxRedirects?: number;
   maxBytes?: number;
+  lookup?: HostLookup;
 };
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -90,6 +93,16 @@ function redirectLocation(currentUrl: string, res: Response) {
   }
 }
 
+function parseRetryAfter(res: Response): number | null {
+  const value = res.headers.get('retry-after');
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.min(seconds, 60 * 60 * 24 * 30);
+  const retryDate = Date.parse(value);
+  if (!Number.isNaN(retryDate)) return Math.max(0, Math.round((retryDate - Date.now()) / 1000));
+  return null;
+}
+
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(timeoutError()), timeoutMs);
@@ -118,6 +131,11 @@ export async function fetchFeed(url: string, opts?: FetchFeedOptions): Promise<F
   const visited = new Set([currentUrl]);
   try {
     for (let redirects = 0; redirects <= maxRedirects; redirects += 1) {
+      const hostGuard = await resolvePublicHost(new URL(currentUrl).hostname, { lookup: opts?.lookup, timeoutMs });
+      if (!hostGuard.ok) {
+        return { status: 'error', url: currentUrl, httpStatus: null, error: { code: hostGuard.code, message: hostGuard.message } };
+      }
+
       const res = await fetchWithTimeout(currentUrl, { headers, redirect: 'manual' }, timeoutMs);
       const httpStatus = res.status;
 
@@ -176,7 +194,11 @@ export async function fetchFeed(url: string, opts?: FetchFeedOptions): Promise<F
         status: 'error',
         url: currentUrl,
         httpStatus,
-        error: { code: 'http_error', message: `Feed returned HTTP ${httpStatus}` },
+        error: {
+          code: 'http_error',
+          message: `Feed returned HTTP ${httpStatus}`,
+          retryAfterSeconds: httpStatus === 429 || httpStatus === 503 ? parseRetryAfter(res) : null,
+        },
       };
     }
 

@@ -85,6 +85,14 @@ export function ensureStorageContract(db: Database.Database) {
        ('theme_mode', '"light"')
      ON CONFLICT(key) DO NOTHING`
   ).run();
+
+  db.prepare(
+    `DELETE FROM fetch_log WHERE fetched_at < strftime('%Y-%m-%dT%H:%M:%fZ','now','-30 days')`
+  ).run();
+  db.prepare(
+    `DELETE FROM fetch_log WHERE id NOT IN (SELECT id FROM fetch_log ORDER BY id DESC LIMIT 10000)`
+  ).run();
+
   normalizeStoredItemDates(db);
 }
 

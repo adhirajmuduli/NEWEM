@@ -5,13 +5,10 @@ import type {
   FeedRemoveFromSectionPayload,
   FeedTestPayload,
   FeedUpdatePayload,
-  ImportantItemsQueryPayload,
-  ImportantItemsQueryResponse,
   ItemsQueryPayload,
   LayoutSetPayload,
   MarkItemReadPayload,
   MarkItemReadResponse,
-  MarkItemsSeenPayload,
   MarkSectionSeenPayload,
   OpmlImportPayload,
   SyncProgressWire,
@@ -49,7 +46,7 @@ function invoke<T>(channel: string, payload?: unknown): Promise<T> {
   return ipcRenderer.invoke(channel, payload ?? {});
 }
 
-const API_VERSION: typeof PRELOAD_API_VERSION = 1;
+const API_VERSION: typeof PRELOAD_API_VERSION = 2;
 
 const api: PreloadApi = {
   version: API_VERSION as typeof PRELOAD_API_VERSION,
@@ -74,16 +71,12 @@ const api: PreloadApi = {
     return () => ipcRenderer.removeListener('sync:completed', wrapped);
   },
   queryItems: (payload: ItemsQueryPayload) => invoke('items:query', payload),
-  markItemsSeen: (payload: MarkItemsSeenPayload) => invoke('items:markSeen', payload),
   markSectionSeen: (payload: MarkSectionSeenPayload) => invoke('sections:markSeen', payload),
   markItemRead(payload: MarkItemReadPayload): Promise<MarkItemReadResponse> {
     return invoke('items:markRead', payload);
   },
   toggleItemImportant(payload: ToggleItemImportantPayload): Promise<ToggleItemImportantResponse> {
     return invoke('items:toggleImportant', payload);
-  },
-  queryImportant(payload?: ImportantItemsQueryPayload): Promise<ImportantItemsQueryResponse> {
-    return invoke('items:important', payload ?? {});
   },
   getLayout: () => invoke('layout:get'),
   setLayout: (payload: LayoutSetPayload) => invoke('layout:set', payload),

@@ -26,7 +26,13 @@ export function upsertFeedMeta(
 export function updateFeedCache(
   db: Database.Database,
   feedId: number,
-  data: { etag?: string | null; lastModified?: string | null; error?: string | null }
+  data: {
+    etag?: string | null;
+    lastModified?: string | null;
+    error?: string | null;
+    consecutiveFailures?: number | null;
+    nextRetryAt?: string | null;
+  }
 ) {
   updateFeedCacheDao(db, feedId, data);
 }

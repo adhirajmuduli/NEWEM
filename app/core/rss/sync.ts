@@ -34,6 +34,23 @@ export type ManualSyncResult = {
 
 export type SyncProgress = { scope: ManualSyncScope; completed: number; total: number; percent: number; feedId?: number };
 
+const RETRY_BASE_MS = 60_000;
+const RETRY_CAP_MS = 24 * 60 * 60 * 1000;
+const RETRY_AFTER_MAX_SECONDS = 60 * 60;
+const GONE_RETRY_MS = 30 * 24 * 60 * 60 * 1000;
+
+function computeNextRetryAt(consecutiveFailures: number, retryAfterSeconds: number | null, httpStatus: number | null) {
+  const now = Date.now();
+  if (httpStatus === 410) return new Date(now + GONE_RETRY_MS).toISOString();
+  if (retryAfterSeconds != null) {
+    const seconds = Math.min(Math.max(Math.trunc(retryAfterSeconds), 1), RETRY_AFTER_MAX_SECONDS);
+    return new Date(now + seconds * 1000).toISOString();
+  }
+  const base = Math.min(RETRY_BASE_MS * 2 ** Math.max(0, consecutiveFailures - 1), RETRY_CAP_MS);
+  const jitter = 0.8 + Math.random() * 0.4;
+  return new Date(now + Math.round(base * jitter)).toISOString();
+}
+
 function messageForError(error: SyncResult['error']) {
   return error ? `${error.code}: ${error.message}` : null;
 }
@@ -44,10 +61,24 @@ function preservedValidators(existing?: { etag?: string | null; last_modified?: 
 
 function persistSyncResult(db: Database.Database, result: SyncResult, meta?: { etag?: string | null; lastModified?: string | null }) {
   if (!result.feedId) return;
+  let consecutiveFailures: number = 0;
+  let nextRetryAt: string | null = null;
+  if (result.status === 'error') {
+    const current = db.prepare('SELECT consecutive_failures FROM feeds WHERE id=?').get(result.feedId) as
+      | { consecutive_failures?: number | null }
+      | undefined;
+    consecutiveFailures = (current?.consecutive_failures ?? 0) + 1;
+    const retryAfterSeconds = result.error && 'retryAfterSeconds' in result.error
+      ? (result.error.retryAfterSeconds ?? null)
+      : null;
+    nextRetryAt = computeNextRetryAt(consecutiveFailures, retryAfterSeconds, result.httpStatus ?? null);
+  }
   updateFeedCache(db, result.feedId, {
     etag: meta?.etag ?? null,
     lastModified: meta?.lastModified ?? null,
     error: result.status === 'error' ? messageForError(result.error) : null,
+    consecutiveFailures,
+    nextRetryAt,
   });
   logFetch(db, {
     feedId: result.feedId,

@@ -14,6 +14,8 @@ export interface Feed {
   is_enabled: number;
   is_muted: number;
   is_fetching?: number;
+  consecutive_failures?: number | null;
+  next_retry_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -37,15 +39,6 @@ export function createFeed(
     title: metadata?.title ?? null,
     site_url: metadata?.siteUrl ?? null,
   }) as Feed;
-}
-
-export function isFeedDue(feed: { last_fetched_at?: string | null; fetch_interval_minutes?: number | null }) {
-  if (!feed.last_fetched_at) return true;
-  if (!feed.fetch_interval_minutes) return true;
-
-  const last = new Date(feed.last_fetched_at).getTime();
-  const now = Date.now();
-  return now - last >= feed.fetch_interval_minutes * 60_000;
 }
 
 export function tryLockFeed(db: Database.Database, feedId: number): boolean {
@@ -88,7 +81,13 @@ export function getFeedByUrl(db: Database.Database, url: string): Feed | undefin
 export function updateFeedCache(
   db: Database.Database,
   id: number,
-  data: { etag?: string | null; lastModified?: string | null; error?: string | null }
+  data: {
+    etag?: string | null;
+    lastModified?: string | null;
+    error?: string | null;
+    consecutiveFailures?: number | null;
+    nextRetryAt?: string | null;
+  }
 ) {
   db.prepare(
     `UPDATE feeds
@@ -97,26 +96,18 @@ export function updateFeedCache(
          last_fetched_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
          last_error = @error,
          is_fetching = 0,
+         consecutive_failures = @consecutiveFailures,
+         next_retry_at = @nextRetryAt,
          updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
      WHERE id = @id`
-  ).run({ id, etag: data.etag ?? null, lastModified: data.lastModified ?? null, error: data.error ?? null });
-}
-
-export function bulkAddFeeds(db: Database.Database, urlsText: string) {
-  const urls = urlsText
-    .split(/\r?\n/)
-    .map((u) => u.trim())
-    .filter((u) => u.length > 0)
-    .map((u) => assertValidFeedUrl(u));
-  const stmt = db.prepare(
-    `INSERT INTO feeds(url) VALUES (?)
-     ON CONFLICT(url) DO NOTHING`
-  );
-  const tx = db.transaction((values: string[]) => {
-    for (const u of values) stmt.run(u);
+  ).run({
+    id,
+    etag: data.etag ?? null,
+    lastModified: data.lastModified ?? null,
+    error: data.error ?? null,
+    consecutiveFailures: data.consecutiveFailures ?? 0,
+    nextRetryAt: data.nextRetryAt ?? null,
   });
-  tx(urls);
-  return urls.length;
 }
 
 export function listFeeds(db: Database.Database, opts?: { limit?: number; offset?: number }) {
@@ -132,16 +123,6 @@ export function getFeed(db: Database.Database, id: number) {
   const stmt = db.prepare(`SELECT * FROM feeds WHERE id=?`);
   return stmt.get(id) as Feed | undefined;
 }
-
-export function setEnabled(db: Database.Database, id: number, enabled: boolean) {
-  const stmt = db.prepare(
-    `UPDATE feeds
-     SET is_enabled=?, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
-     WHERE id=?`
-  );
-  stmt.run(enabled ? 1 : 0, id);
-}
-
 
 export function updateFeedSettings(
   db: Database.Database,
@@ -163,36 +144,6 @@ export function updateFeedSettings(
      RETURNING *`
   ).get({ id, enabled, muted, interval }) as Feed;
 }
-export function updateMeta(
-  db: Database.Database,
-  id: number,
-  meta: Partial<Pick<Feed, 'etag' | 'last_modified' | 'last_fetched_at' | 'last_error' | 'title' | 'site_url'>>
-) {
-  const f = getFeed(db, id);
-  if (!f) return;
-  const newVals = {
-    etag: meta.etag ?? f.etag ?? null,
-    last_modified: meta.last_modified ?? f.last_modified ?? null,
-    last_fetched_at: meta.last_fetched_at ?? f.last_fetched_at ?? null,
-    last_error: meta.last_error ?? null,
-    title: meta.title ?? f.title ?? null,
-    site_url: meta.site_url ?? f.site_url ?? null,
-  };
-  const stmt = db.prepare(
-    `UPDATE feeds
-     SET etag=?, last_modified=?, last_fetched_at=?, last_error=?, title=?, site_url=?, is_fetching=0,
-         updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
-     WHERE id=?`
-  );
-  stmt.run(
-    newVals.etag,
-    newVals.last_modified,
-    newVals.last_fetched_at,
-    newVals.last_error,
-    newVals.title,
-    newVals.site_url,
-    id
-  );
-}
 
 export {};
+

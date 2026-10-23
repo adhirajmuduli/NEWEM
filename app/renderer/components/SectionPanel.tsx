@@ -14,11 +14,13 @@ type SectionPanelProps = {
   loading: boolean;
   error: string | null;
   warning: string | null;
+  hasOlder?: boolean;
   progress?: number;
   appearance?: SectionAppearanceWire;
   dayWindow?: number | null;
   onDayWindowChange(sectionKey: string, days: number | null): void;
   onRefresh(sectionId: number): void;
+  onLoadOlder(sectionId: number): void;
   onMarkSeen(sectionId: number): void;
   openExternalItem(sectionId: number, item: ItemWire): void;
   onToggleImportant(sectionId: number, item: ItemWire): void;
@@ -191,6 +193,9 @@ export function SectionPanel(props: SectionPanelProps) {
                   openExternalItem={props.openExternalItem}
                   onToggleImportant={props.onToggleImportant}
                 />
+                {props.hasOlder ? (
+                  <button type="button" className="load-older" onClick={() => props.onLoadOlder(props.section.id)}>Load older items</button>
+                ) : null}
               </>
             ) : (!props.loading && !props.error ? <div className="state-card">No unread items. Refresh the section or add feeds to bring news here.</div> : null)}
           </div>
