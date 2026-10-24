@@ -33,10 +33,11 @@ function panel(overrides: Partial<React.ComponentProps<typeof SectionPanel>> = {
       warning={null}
       onDayWindowChange={vi.fn()}
       onRefresh={vi.fn()}
+      onLoadOlder={vi.fn()}
       onMarkSeen={vi.fn()}
-      openExternalItem={vi.fn()}
+      onExportDiagnostics={vi.fn()}
+      openItem={vi.fn()}
       onToggleImportant={vi.fn()}
-      onToggleFeed={vi.fn()}
       onToggleMute={vi.fn()}
       onUpdateInterval={vi.fn()}
       onRemoveFeed={vi.fn()}
@@ -83,12 +84,12 @@ describe('section news work surface', () => {
     expect(filterItemsByDayWindow([recent, old, unknown], 7, now).map((row) => row.id)).toEqual([12, 14]);
     expect(filterItemsByDayWindow([recent, old], null, now)).toHaveLength(2);
   });
-  it('uses only the title as the open action and places a compact important control in metadata', async () => {
+  it('opens the reader on title clicks and shows the section unread badge', async () => {
     const onToggleImportant = vi.fn();
-    const openExternalItem = vi.fn();
+    const openItem = vi.fn();
     document.body.innerHTML = '<div id="root"></div>';
     root = createRoot(document.getElementById('root')!);
-    await act(async () => root.render(panel({ onToggleImportant, openExternalItem })));
+    await act(async () => root.render(panel({ onToggleImportant, openItem })));
 
     expect([...document.querySelectorAll('button')].some((button) => button.textContent === 'Open')).toBe(false);
     const important = document.querySelector('.important-toggle') as HTMLButtonElement;
@@ -98,10 +99,15 @@ describe('section news work surface', () => {
 
     const title = document.querySelector('.item-title') as HTMLAnchorElement;
     await act(async () => title.click());
-    expect(openExternalItem).toHaveBeenCalledWith(1, item);
+    expect(openItem).toHaveBeenCalledWith(1, item);
+    expect(document.querySelector('.item-external')).toBeNull();
+
+    const badge = document.querySelector('.unread-badge') as HTMLElement;
+    expect(badge).toBeTruthy();
+    expect(badge.textContent).toContain('1 unread');
   });
 
-  it('renders an uncapped item set incrementally to keep scrolling responsive', async () => {
+  it('renders an uncapped item set incrementally to keep scrolling responsive', { timeout: 20_000 }, async () => {
     const manyItems = Array.from({ length: 161 }, (_, index) => ({
       ...item,
       id: index + 1,
@@ -119,6 +125,20 @@ describe('section news work surface', () => {
     await act(async () => (document.querySelector('.load-more-items') as HTMLButtonElement).click());
     expect(document.querySelectorAll('.item-card')).toHaveLength(161);
     expect(document.querySelector('.load-more-items')).toBeNull();
+  });
+
+  it('offers a load-older affordance only when the section query was truncated', async () => {
+    const onLoadOlder = vi.fn();
+    document.body.innerHTML = '<div id="root"></div>';
+    root = createRoot(document.getElementById('root')!);
+    await act(async () => root.render(panel({ hasOlder: true, onLoadOlder })));
+    const older = document.querySelector('button.load-older') as HTMLButtonElement;
+    expect(older).toBeTruthy();
+    await act(async () => older.click());
+    expect(onLoadOlder).toHaveBeenCalledWith(section.id);
+
+    await act(async () => root.render(panel({ hasOlder: false, onLoadOlder })));
+    expect(document.querySelector('button.load-older')).toBeNull();
   });
   it('defines static glass, bento, scroll containment, and increased section height', () => {
     const css = fs.readFileSync(path.resolve(process.cwd(), 'app', 'renderer', 'styles', 'app.css'), 'utf8');

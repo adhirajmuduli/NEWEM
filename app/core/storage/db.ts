@@ -68,6 +68,11 @@ export function initDb(dbPath?: string) {
 
 export function closeDb() {
   if (!dbInstance) return;
+  try {
+    dbInstance.exec('PRAGMA optimize');
+  } catch {
+    // PRAGMA optimize is best-effort; shutdown proceeds regardless.
+  }
   dbInstance.close();
   dbInstance = null;
 }

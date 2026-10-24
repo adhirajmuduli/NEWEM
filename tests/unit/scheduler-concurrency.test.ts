@@ -23,4 +23,15 @@ describe('scheduler concurrency', () => {
     const fetchedAt = '2026-06-29T10:00:00.000Z';
     expect(nextDueAt({ last_fetched_at: fetchedAt, fetch_interval_minutes: 1 } as any))
       .toBe(Date.parse(fetchedAt) + 60_000);
+  });
+
+  it('holds a feed in backoff until next_retry_at passes', () => {
+    const fetchedAt = '2026-06-29T10:00:00.000Z';
+    const withoutBackoff = nextDueAt({ last_fetched_at: fetchedAt, fetch_interval_minutes: 30 } as any);
+    const backoffUntil = '2030-01-01T00:00:00.000Z';
+    const withBackoff = nextDueAt({ last_fetched_at: fetchedAt, fetch_interval_minutes: 30, next_retry_at: backoffUntil } as any);
+    expect(withBackoff).toBe(Date.parse(backoffUntil));
+    expect(withBackoff).toBeGreaterThan(withoutBackoff);
+    const pastBackoff = nextDueAt({ last_fetched_at: fetchedAt, fetch_interval_minutes: 30, next_retry_at: '2020-01-01T00:00:00.000Z' } as any);
+    expect(pastBackoff).toBe(withoutBackoff);
   });});

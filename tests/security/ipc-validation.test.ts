@@ -4,7 +4,7 @@ import path from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { closeDb, initDb } from '../../app/core/storage/db';
 import { registerIpcHandlers } from '../../app/main/ipc';
-import { validateSyncCompletedWire, validateSyncProgressWire } from '../../app/preload/validators';
+import { validateReaderStateWire, validateSyncCompletedWire, validateSyncProgressWire } from '../../app/preload/validators';
 
 type Handler = (_evt: unknown, payload?: unknown) => Promise<unknown>;
 const tempRoots: string[] = [];
@@ -43,10 +43,22 @@ describe('validated IPC handlers', () => {
     const handlers = setupHandlers();
     const created = await handlers.get('sections:create')!(null, { name: 'Security', key: 'security' }) as any;
     expect(created.changed).toBe(1);
+    expect(Object.keys(created.section).sort()).toEqual(['feeds', 'id', 'key', 'name', 'position_index']);
+    const duplicate = await handlers.get('sections:create')!(null, { name: 'Security', key: 'security' }) as any;
+    expect(duplicate).toMatchObject({ changed: 0, section: { id: created.section.id, name: 'Security' } });
+    await expect(handlers.get('sections:create')!(null, { name: 'SECURITY', key: 'security' })).rejects.toThrow(/already exists/);
     const layout = await handlers.get('layout:set')!(null, { layout: { theme: 'readit', panels: [{ id: 'security', x: 0, y: 0, w: 3, h: 2 }], dayWindows: { security: 7 } } }) as any;
     expect(layout.layout).toMatchObject({ theme: 'readit', panels: [{ id: 'security', w: 3 }], dayWindows: { security: 7 } });
     const allItems = await handlers.get('items:query')!(null, { sectionId: -1, all: true, includeSeen: true }) as any;
     expect(allItems.items).toEqual([]);
+  });
+
+  it('rejects section names that collide with an existing section key', async () => {
+    const handlers = setupHandlers();
+    await handlers.get('sections:create')!(null, { name: 'Tech' });
+    await expect(handlers.get('sections:create')!(null, { name: 'TECH' })).rejects.toThrow(/already exists/);
+    const sections = await handlers.get('sections:list')!(null, {}) as any;
+    expect(sections.sections.filter((section: any) => section.key === 'tech')).toHaveLength(1);
   });
 
   it('closes only the requesting Electron window through validated IPC', async () => {
@@ -64,4 +76,32 @@ describe('validated IPC handlers', () => {
     expect(validateSyncCompletedWire({ source: 'scheduler', feedId: 7, sectionIds: [1, 2], status: 'ok', newItems: 3 })).toMatchObject({ feedId: 7 });
     expect(() => validateSyncCompletedWire({ source: 'scheduler', feedId: 7, sectionIds: [1], status: 'ok', newItems: 3, injected: true })).toThrow(/not allowed/);
     expect(() => validateSyncProgressWire({ scope: 'all', completed: 1, total: 2, percent: '50' })).toThrow(/must be a number/);
+  });
+
+  it('validates reader payloads and pushed reader state strictly', async () => {
+    const handlers = setupHandlers();
+    const bounds = { x: 0, y: 0, width: 600, height: 800 };
+    await expect(handlers.get('reader:open')!(null, { sectionKey: 'world', url: 'https://example.com/a', title: 'A', bounds: { ...bounds, x: -1 } })).rejects.toThrow();
+    await expect(handlers.get('reader:open')!(null, { sectionKey: 'world', url: 'https://example.com/a', title: 'A', bounds: { ...bounds, width: 10 } })).rejects.toThrow();
+    await expect(handlers.get('reader:open')!(null, { sectionKey: 'world', url: 'https://example.com/a', title: 'A', bounds, injected: true })).rejects.toThrow(/not allowed/);
+    await expect(handlers.get('reader:open')!(null, { sectionKey: 'world', url: '', title: 'A', bounds })).rejects.toThrow();
+    await expect(handlers.get('reader:reposition')!(null, { bounds })).rejects.toThrow();
+    await expect(handlers.get('reader:activateTab')!(null, { tabId: 0 })).rejects.toThrow();
+    await expect(handlers.get('reader:closeTab')!(null, { tabId: 1.5 })).rejects.toThrow();
+
+    expect(validateReaderStateWire(null)).toBeNull();
+    expect(validateReaderStateWire({
+      tabs: [{ tabId: 1, url: 'https://example.com/a', title: 'A', sectionKey: 'world' }],
+      activeTabId: 1,
+      dockSectionKey: 'world',
+      dockBounds: { x: 600, y: 0, width: 600, height: 800 },
+    })).toMatchObject({ activeTabId: 1 });
+    expect(() => validateReaderStateWire({ tabs: [], activeTabId: 'one', dockSectionKey: null, dockBounds: null })).toThrow();
+    expect(() => validateReaderStateWire({
+      tabs: [{ tabId: 1, url: 'https://example.com/a', title: 'A', sectionKey: 'world' }],
+      activeTabId: 1,
+      dockSectionKey: null,
+      dockBounds: null,
+      injected: true,
+    })).toThrow(/not allowed/);
   });});

@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+﻿// @vitest-environment jsdom
 import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
@@ -15,7 +15,7 @@ function section(id: number, key: string, name: string): SectionWire {
 function apiWithLayout(layoutRef: { current: LayoutWire }): PreloadApi {
   const sections = [section(1, 'tech', 'Tech'), section(2, 'world', 'World')];
   return {
-    version: 1,
+    version: 2,
     listSections: vi.fn(async () => ({ sections })),
     createSection: vi.fn(async () => ({ changed: 0 })),
     updateSection: vi.fn(async () => ({ changed: 0 })),
@@ -27,11 +27,9 @@ function apiWithLayout(layoutRef: { current: LayoutWire }): PreloadApi {
     testFeed: vi.fn(async () => ({ status: 'ok' as const })),
     syncTrigger: vi.fn(async () => ({ status: 'ok' as const, scope: 'all' as const, requested: 0, triggered: 0, ok: 0, notModified: 0, errors: 0, newItems: 0, results: [] })),
     queryItems: vi.fn(async () => ({ items: [] })),
-    markItemsSeen: vi.fn(async () => ({ changed: 0 })),
     markSectionSeen: vi.fn(async () => ({ changed: 0 })),
     markItemRead: vi.fn(async () => ({ changed: 0 })),
     toggleItemImportant: vi.fn(async () => ({ is_important: 1 as const })),
-    queryImportant: vi.fn(async () => ({ items: [] })),
     getLayout: vi.fn(async () => ({ layout: layoutRef.current })),
     setLayout: vi.fn(async ({ layout }) => {
       layoutRef.current = layout;
@@ -42,6 +40,12 @@ function apiWithLayout(layoutRef: { current: LayoutWire }): PreloadApi {
     importOpml: vi.fn(async () => ({ imported: 0, skipped: 0 })),
     exportBackup: vi.fn(async () => ({ filePath: 'backup.db' })),
     exportDiagnostics: vi.fn(async () => ({ filePath: 'diagnostics.json', entries: 0 })),
+      openReaderTab: vi.fn(async () => ({ state: null })),
+      activateReaderTab: vi.fn(async () => ({ state: null })),
+      closeReaderTab: vi.fn(async () => ({ state: null })),
+      closeReader: vi.fn(async () => ({ state: null })),
+      repositionReader: vi.fn(async () => ({ state: null })),
+
     openExternal: vi.fn(async () => ({ opened: true })),
   };
 }
@@ -67,7 +71,7 @@ afterEach(() => vi.restoreAllMocks());
 
 describe('Stage 6 persisted layout restore', () => {
   it('restores resized panel order and width after remount', async () => {
-    const layoutRef = { current: { mode: 'columns', theme: 'space' as LayoutWire['theme'], panels: [{ id: 'world', x: 0, y: 0, w: 64, h: 1 }, { id: 'tech', x: 1, y: 0, w: 42, h: 1 }], appearance: {} } as LayoutWire };
+    const layoutRef = { current: { mode: 'mosaic', theme: 'space' as LayoutWire['theme'], panels: [{ id: 'world', x: 0, y: 0, w: 64, h: 1 }, { id: 'tech', x: 1, y: 0, w: 42, h: 1 }], appearance: {} } as LayoutWire };
     let root: Root = await mount(apiWithLayout(layoutRef));
 
     expect((document.querySelector('[data-panel-id="world"]') as HTMLElement).style.order).toBe('0');

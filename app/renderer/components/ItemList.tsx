@@ -27,7 +27,7 @@ export function plainTextFromFeedContent(html?: string | null) {
 export function ItemList(props: {
   sectionId: number;
   items: ItemWire[];
-  openExternalItem(sectionId: number, item: ItemWire): void;
+  openItem(sectionId: number, item: ItemWire): void;
   onToggleImportant(sectionId: number, item: ItemWire): void;
 }) {
   const [visibleCount, setVisibleCount] = React.useState(() => Math.min(RENDER_BATCH_SIZE, props.items.length));
@@ -62,6 +62,8 @@ export function ItemList(props: {
           <article
             key={item.id}
             data-featured={index % 7 === 0 ? 'true' : undefined}
+            data-item-id={item.id}
+            data-section-id={props.sectionId}
             className={item.is_read ? 'item-card glass-card read' : 'item-card glass-card'}
           >
             <div className="item-topline">
@@ -83,7 +85,7 @@ export function ItemList(props: {
               className="item-title"
               onClick={(e) => {
                 e.preventDefault();
-                props.openExternalItem(props.sectionId, item);
+                props.openItem(props.sectionId, item);
               }}
             >
               {item.title || '(untitled)'}

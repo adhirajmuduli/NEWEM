@@ -11,6 +11,7 @@ import { createMainWindow } from './windows';
 import { bootstrapApplication } from './bootstrap';
 import { logger, withModule } from './logging';
 import { configureElectronRuntimePaths } from './runtimePaths';
+import { reader, readerHostForWindow } from './reader';
 
 const electron = (() => {
   try {
@@ -54,8 +55,10 @@ function setupSingleInstanceLock() {
 function createTrackedWindow() {
   const window = createMainWindow();
   log.info('window_created');
+  reader.attach(readerHostForWindow(window));
   window.on('closed', () => {
     if (mainWindow === window) mainWindow = null;
+    reader.detach();
   });
   return window;
 }
@@ -137,6 +140,8 @@ if (!app) {
     removeSchedulerListener?.();
     removeSchedulerListener = null;
     log.info('scheduler_stopped');
+    closeDb();
+    log.info('database_closed');
   });
 
   app.on('window-all-closed', () => {

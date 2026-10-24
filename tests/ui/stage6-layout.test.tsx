@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+﻿// @vitest-environment jsdom
 import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
@@ -18,7 +18,7 @@ function makeApi(initialLayout: LayoutWire) {
   let layout = initialLayout;
   const sections = [section(1, 'tech', 'Tech'), section(2, 'world', 'World')];
   const api: PreloadApi = {
-    version: 1,
+    version: 2,
     listSections: vi.fn(async () => ({ sections })),
     createSection: vi.fn(async () => ({ changed: 0 })),
     updateSection: vi.fn(async () => ({ changed: 0 })),
@@ -30,11 +30,9 @@ function makeApi(initialLayout: LayoutWire) {
     testFeed: vi.fn(async () => ({ status: 'ok' as const })),
     syncTrigger: vi.fn(async () => ({ status: 'ok' as const, scope: 'all' as const, requested: 0, triggered: 0, ok: 0, notModified: 0, errors: 0, newItems: 0, results: [] })),
     queryItems: vi.fn(async () => ({ items: [] })),
-    markItemsSeen: vi.fn(async () => ({ changed: 0 })),
     markSectionSeen: vi.fn(async () => ({ changed: 0 })),
     markItemRead: vi.fn(async () => ({ changed: 0 })),
     toggleItemImportant: vi.fn(async () => ({ is_important: 1 as const })),
-    queryImportant: vi.fn(async () => ({ items: [] })),
     getLayout: vi.fn(async () => ({ layout })),
     setLayout: vi.fn(async ({ layout: next }) => {
       layout = next;
@@ -45,6 +43,12 @@ function makeApi(initialLayout: LayoutWire) {
     importOpml: vi.fn(async () => ({ imported: 0, skipped: 0 })),
     exportBackup: vi.fn(async () => ({ filePath: 'backup.db' })),
     exportDiagnostics: vi.fn(async () => ({ filePath: 'diagnostics.json', entries: 0 })),
+      openReaderTab: vi.fn(async () => ({ state: null })),
+      activateReaderTab: vi.fn(async () => ({ state: null })),
+      closeReaderTab: vi.fn(async () => ({ state: null })),
+      closeReader: vi.fn(async () => ({ state: null })),
+      repositionReader: vi.fn(async () => ({ state: null })),
+
     openExternal: vi.fn(async () => ({ opened: true })),
   };
   return api;
@@ -96,7 +100,7 @@ describe('Stage 6 renderer layout controls', () => {
 
   beforeEach(async () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1000 });
-    api = makeApi({ mode: 'columns', panels: [{ id: 'tech', x: 0, y: 0, w: 50, h: 1 }, { id: 'world', x: 1, y: 0, w: 50, h: 1 }], appearance: { tech: { mode: 'image', imageDataUrl: 'data:image/png;base64,AA==' } } });
+    api = makeApi({ mode: 'mosaic', panels: [{ id: 'tech', x: 0, y: 0, w: 50, h: 1 }, { id: 'world', x: 1, y: 0, w: 50, h: 1 }], appearance: { tech: { mode: 'image', imageDataUrl: 'data:image/png;base64,AA==' } } });
     root = await renderApp(api);
   });
 
@@ -174,14 +178,26 @@ describe('Stage 6 renderer layout controls', () => {
     expect(css).toContain('.resize-handle { display: none; }');
   });
 
-  it('exposes only the READIT theme without refreshing application data', async () => {
+  it('exposes every installed theme without refreshing application data', async () => {
     await click('Manage');
     await selectSection('Tech');
     const listCalls = vi.mocked(api.listSections).mock.calls.length;
     const queryCalls = vi.mocked(api.queryItems).mock.calls.length;
     const themeSelect = document.querySelector('select[aria-label="App colour scheme"]') as HTMLSelectElement;
 
-    expect([...themeSelect.options].map((option) => option.value)).toEqual(['readit']);
+    expect([...themeSelect.options].map((option) => option.value)).toEqual([
+      'readit',
+      'slate-indigo',
+      'midnight-teal',
+      'graphite-amber',
+      'soft-blue-gray',
+      'warm-paper',
+      'sage-mist',
+      'dusty-lavender',
+      'stone-clay',
+      'stone-clay-light',
+    ]);
+    expect(themeSelect.closest('.manager-top-pane')).toBeTruthy();
     await selectOption('App colour scheme', 'readit');
 
     expect(document.documentElement.dataset.colorScheme).toBe('readit');

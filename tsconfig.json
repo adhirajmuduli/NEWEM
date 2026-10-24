@@ -9,6 +9,5 @@
     "paths": {
       "@/*": ["./app/renderer/*"]
     }
-  },
-  "files": ["globals.d.ts"]
+  }
 }

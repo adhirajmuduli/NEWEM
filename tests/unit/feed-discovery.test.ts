@@ -1,7 +1,15 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { discoverFeedLinks, resolveFeedInput } from '../../app/core/rss/discovery';
+import { setHostLookupOverride } from '../../app/core/rss/dnsGuard';
 
-afterEach(() => vi.restoreAllMocks());
+beforeEach(() => {
+  setHostLookupOverride(async () => ['203.0.113.10']);
+});
+
+afterEach(() => {
+  setHostLookupOverride(null);
+  vi.restoreAllMocks();
+});
 
 describe('RSS and Atom autodiscovery', () => {
   it('resolves public relative RSS/Atom alternates and excludes JSON Feed links', () => {

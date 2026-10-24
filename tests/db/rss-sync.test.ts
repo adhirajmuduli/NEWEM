@@ -1,12 +1,13 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { closeDb, initDb } from '../../app/core/storage/db';
 import { createFeed, getFeed } from '../../app/core/storage/dao/feedsDao';
 import { assignFeedToSection, createSection } from '../../app/core/storage/dao/sectionsDao';
-import { syncFeedById } from '../../app/core/rss/sync';
+import { syncAllFeeds, syncFeedById } from '../../app/core/rss/sync';
 import { getItemsBySection } from '../../app/core/storage/dao/itemsDao';
+import { setHostLookupOverride } from '../../app/core/rss/dnsGuard';
 
 const tempRoots: string[] = [];
 
@@ -24,7 +25,12 @@ function item(title: string, link: string, guid = link) {
   return `<item><guid>${guid}</guid><title>${title}</title><link>${link}</link><description>${title}</description><pubDate>Mon, 01 Jan 2024 00:00:00 GMT</pubDate></item>`;
 }
 
+beforeEach(() => {
+  setHostLookupOverride(async () => ['203.0.113.10']);
+});
+
 afterEach(() => {
+  setHostLookupOverride(null);
   vi.restoreAllMocks();
   closeDb();
   while (tempRoots.length > 0) {
@@ -102,5 +108,123 @@ describe('canonical RSS sync', () => {
     expect(httpError.status).toBe('error');
     expect(httpError.error?.code).toBe('http_error');
     expect(db.prepare(`SELECT COUNT(*) AS count FROM fetch_log WHERE feed_id=? AND status='error'`).get(feed.id)).toMatchObject({ count: 2 });
+  });
+
+  it('invalidates stale cache validators when a 200 response omits them', async () => {
+    const db = tempDb();
+    const feed = createFeed(db, 'https://example.com/rss.xml');
+    db.prepare(`UPDATE feeds SET etag='stale-etag', last_modified='stale-lm' WHERE id=?`).run(feed.id);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(rss(item('Fresh', 'https://example.com/fresh')), { status: 200 })));
+
+    const result = await syncFeedById(db, feed.id);
+
+    expect(result.status).toBe('ok');
+    expect(getFeed(db, feed.id)?.etag).toBeNull();
+    expect(getFeed(db, feed.id)?.last_modified).toBeNull();
+  });
+
+  it('preserves stored cache validators when a 304 response omits them', async () => {
+    const db = tempDb();
+    const feed = createFeed(db, 'https://example.com/rss.xml');
+    db.prepare(`UPDATE feeds SET etag='stored-etag', last_modified='stored-lm' WHERE id=?`).run(feed.id);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 304 })));
+
+    const result = await syncFeedById(db, feed.id);
+
+    expect(result.status).toBe('not_modified');
+    expect(getFeed(db, feed.id)).toMatchObject({ etag: 'stored-etag', last_modified: 'stored-lm' });
+  });
+
+  it('refuses to refetch a feed while its refresh lock is held', async () => {
+    const db = tempDb();
+    const feed = createFeed(db, 'https://example.com/rss.xml');
+    db.prepare(`UPDATE feeds SET is_fetching=1 WHERE id=?`).run(feed.id);
+    const fetchMock = vi.fn(async () => new Response(rss(item('A', 'https://example.com/a')), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await syncFeedById(db, feed.id);
+
+    expect(result.status).toBe('error');
+    expect(result.error?.code).toBe('feed_in_progress');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('backs off exponentially after fetch failures and resets on success', async () => {
+    const db = tempDb();
+    const feed = createFeed(db, 'https://example.com/rss.xml');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('missing', { status: 500 })));
+
+    await syncFeedById(db, feed.id);
+    let row = getFeed(db, feed.id);
+    expect(row?.consecutive_failures).toBe(1);
+    let retry = Date.parse(row?.next_retry_at ?? '');
+    expect(retry).toBeGreaterThan(Date.now() + 40_000);
+    expect(retry).toBeLessThan(Date.now() + 80_000);
+
+    await syncFeedById(db, feed.id);
+    row = getFeed(db, feed.id);
+    expect(row?.consecutive_failures).toBe(2);
+    retry = Date.parse(row?.next_retry_at ?? '');
+    expect(retry).toBeGreaterThan(Date.now() + 90_000);
+    expect(retry).toBeLessThan(Date.now() + 150_000);
+
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(rss(item('Recovered', 'https://example.com/recovered')), { status: 200 })));
+    const result = await syncFeedById(db, feed.id);
+    expect(result.status).toBe('ok');
+    row = getFeed(db, feed.id);
+    expect(row?.consecutive_failures).toBe(0);
+    expect(row?.next_retry_at).toBeNull();
+  });
+
+  it('honors Retry-After on rate limited responses', async () => {
+    const db = tempDb();
+    const feed = createFeed(db, 'https://example.com/rss.xml');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('slow down', { status: 429, headers: { 'retry-after': '120' } })));
+
+    const result = await syncFeedById(db, feed.id);
+
+    expect(result.status).toBe('error');
+    expect(result.error?.code).toBe('http_error');
+    const row = getFeed(db, feed.id);
+    expect(row?.consecutive_failures).toBe(1);
+    const retry = Date.parse(row?.next_retry_at ?? '');
+    expect(retry).toBeGreaterThan(Date.now() + 100_000);
+    expect(retry).toBeLessThan(Date.now() + 140_000);
+  });
+
+  it('applies a long cooldown after HTTP 410 Gone without mutating user mute state', async () => {
+    const db = tempDb();
+    const feed = createFeed(db, 'https://example.com/rss.xml');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 410 })));
+
+    const result = await syncFeedById(db, feed.id);
+
+    expect(result.status).toBe('error');
+    const row = getFeed(db, feed.id);
+    expect(row?.consecutive_failures).toBe(1);
+    expect(row?.is_muted).toBe(0);
+    expect(row?.is_enabled).toBe(1);
+    const retry = Date.parse(row?.next_retry_at ?? '');
+    expect(retry).toBeGreaterThan(Date.now() + 29 * 24 * 60 * 60 * 1000);
+  });
+
+  it('skips unmapped feeds during a global refresh', async () => {
+    const db = tempDb();
+    const section = createSection(db, 'Mapped', 0, 'mapped');
+    const mapped = createFeed(db, 'https://example.com/mapped.xml');
+    const orphan = createFeed(db, 'https://example.com/orphan.xml');
+    assignFeedToSection(db, mapped.id, section.id);
+    vi.stubGlobal('fetch', vi.fn(async (requestUrl: string) => {
+      if (String(requestUrl).includes('orphan')) throw new Error('orphan must not be fetched');
+      return new Response(rss(item('Mapped item', 'https://example.com/mapped-a')), { status: 200 });
+    }));
+
+    const result = await syncAllFeeds(db);
+
+    const syncedFeedIds = result.results.map((row) => row.feedId);
+    expect(syncedFeedIds).not.toContain(orphan.id);
+    expect(syncedFeedIds).toContain(mapped.id);
+    expect(result.requested).toBe(result.results.length);
+    expect(getFeed(db, orphan.id)).toBeTruthy();
   });
 });

@@ -21,7 +21,12 @@ export function nextDueAt(feed: Feed) {
   if (!feed.last_fetched_at) return 0;
   const last = Date.parse(feed.last_fetched_at);
   if (Number.isNaN(last)) return 0;
-  return last + minutesToMs(Math.max(MIN_INTERVAL_MINUTES, feed.fetch_interval_minutes ?? DEFAULT_INTERVAL_MINUTES));
+  let due = last + minutesToMs(Math.max(MIN_INTERVAL_MINUTES, feed.fetch_interval_minutes ?? DEFAULT_INTERVAL_MINUTES));
+  if (feed.next_retry_at) {
+    const retry = Date.parse(feed.next_retry_at);
+    if (!Number.isNaN(retry)) due = Math.max(due, retry);
+  }
+  return due;
 }
 
 export async function runWithConcurrency<T>(
@@ -94,7 +99,11 @@ export class Scheduler {
   private async tick() {
     const db = getDb();
     const now = Date.now();
+    const mappedFeedIds = new Set(
+      (db.prepare('SELECT DISTINCT feed_id FROM feed_sections').all() as Array<{ feed_id: number }>).map((row) => row.feed_id)
+    );
     const dueFeeds = listFeeds(db).filter((feed) =>
+      mappedFeedIds.has(feed.id) &&
       feed.is_enabled === 1 &&
       feed.is_muted !== 1 &&
       !this.inFlight.has(feed.id) &&
@@ -146,10 +155,3 @@ export class Scheduler {
 
 export const scheduler = new Scheduler();
 
-export function startScheduler() {
-  scheduler.start();
-}
-
-export function stopScheduler() {
-  scheduler.stop();
-}

@@ -29,28 +29,14 @@ export type SectionAppearanceSetting = {
 };
 
 export interface LayoutSetting {
-  mode?: 'stack' | 'columns' | 'mosaic' | 'focus';
+  mode?: 'stack' | 'mosaic';
   theme?: string;
   panels: Array<{ id: string; x: number; y: number; w: number; h: number }>;
   appearance?: Record<string, SectionAppearanceSetting>;
 }
 
-export type ThemeMode = 'light' | 'dark';
-
 export function getShowSeen(db: Database.Database) {
   return Boolean(getSetting<boolean>(db, 'show_seen_news', false));
-}
-
-export function setShowSeen(db: Database.Database, show: boolean) {
-  setSetting(db, 'show_seen_news', !!show);
-}
-
-export function getThemeMode(db: Database.Database): ThemeMode {
-  return (getSetting<string>(db, 'theme_mode', 'light') as ThemeMode) ?? 'light';
-}
-
-export function setThemeMode(db: Database.Database, mode: ThemeMode) {
-  setSetting(db, 'theme_mode', mode);
 }
 
 export function getLayout(db: Database.Database) {

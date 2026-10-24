@@ -10,9 +10,7 @@
   },
   "include": [
     "app/renderer/**/*",
-    "app/shared/**/*",
-    "globals.d.ts",
-    "vite.config.mts"
+    "app/shared/**/*"
   ],
   "exclude": ["dist", "node_modules"]
 }

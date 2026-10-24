@@ -34,11 +34,11 @@ describe('Electron hardening policy', () => {
     const source = fs.readFileSync(path.resolve(process.cwd(), 'app', 'preload', 'bridge.ts'), 'utf8');
     expect(source).toContain("import type {");
     expect(source).not.toContain("import { PRELOAD_API_VERSION as API_VERSION }");
-    expect(source).toContain("const API_VERSION: typeof PRELOAD_API_VERSION = 1");
+    expect(source).toContain("const API_VERSION: typeof PRELOAD_API_VERSION = 2");
   });
 
   it('preload API contract is versioned', () => {
-    expect(PRELOAD_API_VERSION).toBe(1);
+    expect(PRELOAD_API_VERSION).toBe(2);
   });
 
   it('starts fullscreen without the redundant native application menu', () => {
@@ -46,5 +46,14 @@ describe('Electron hardening policy', () => {
     expect(source).toContain('fullscreen: true');
     expect(source).toContain('Menu.setApplicationMenu(null)');
     expect(source).toContain('installWindowChrome(win)');
+  });
+
+  it('acquires the single-instance lock before ready and focuses the window on a second launch', () => {
+    const source = fs.readFileSync(path.resolve(process.cwd(), 'app', 'main', 'app.ts'), 'utf8');
+    expect(source).toContain('app.requestSingleInstanceLock()');
+    expect(source).toContain("app.on('second-instance'");
+    expect(source).toContain('} else if (setupSingleInstanceLock()) {');
+    expect(source).toContain('mainWindow.restore()');
+    expect(source).toContain('mainWindow.focus()');
   });
 });

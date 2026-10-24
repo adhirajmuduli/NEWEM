@@ -9,7 +9,7 @@ function section(id: number, key: string, name = key): SectionWire {
 describe('Stage 6 layout normalization', () => {
   it('clamps panel widths and removes panels for deleted sections', () => {
     const layout: LayoutWire = {
-      mode: 'columns',
+      mode: 'columns' as LayoutWire['mode'],
       theme: 'forest' as LayoutWire['theme'],
       panels: [
         { id: 'world', x: 0, y: 0, w: 140, h: 1 },
@@ -34,7 +34,7 @@ describe('Stage 6 layout normalization', () => {
 
   it('resizes, reorders, and resets by stable panel key', () => {
     const sections = [section(1, 'a'), section(2, 'b')];
-    const initial = { ...resetLayoutForSections(sections), mode: 'columns' as const };
+    const initial = { ...resetLayoutForSections(sections), mode: 'mosaic' as const };
     const resized = resizePanel(initial, 'a', 44.8);
     const moved = movePanel(resized, 'a', 1);
 

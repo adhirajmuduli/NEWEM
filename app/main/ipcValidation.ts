@@ -80,7 +80,7 @@ export function layoutValue(value: unknown) {
   const panels = obj.panels;
   if (!Array.isArray(panels)) throw new Error('layout.panels must be an array');
   const mode = obj.mode === undefined ? undefined : stringValue(obj.mode, 'layout.mode', { min: 1, max: 16 });
-  if (mode !== undefined && !['stack', 'columns', 'mosaic', 'focus'].includes(mode)) throw new Error('layout.mode is invalid');
+  if (mode !== undefined && !['stack', 'mosaic'].includes(mode)) throw new Error('layout.mode is invalid');
   const theme = obj.theme === undefined ? undefined : stringValue(obj.theme, 'layout.theme', { min: 1, max: 32 });
   if (theme !== undefined && !isColorSchemeId(theme)) throw new Error('layout.theme is invalid');
   const appearance: Record<string, ReturnType<typeof appearanceValue>> = {};
@@ -102,7 +102,7 @@ export function layoutValue(value: unknown) {
     }
   }
   return {
-    mode: mode as 'stack' | 'columns' | 'mosaic' | 'focus' | undefined,
+    mode: mode as 'stack' | 'mosaic' | undefined,
     theme,
     panels: panels.map((panel, index) => {
       assertPlainObject(panel, `layout.panels[${index}]`);

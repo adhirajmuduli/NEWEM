@@ -1,5 +1,5 @@
 import React from 'react';
-import { PanelLeftCloseIcon, PanelLeftOpenIcon } from 'lucide-react';
+import { PanelLeftCloseIcon, PanelLeftOpenIcon, VolumeXIcon } from 'lucide-react';
 import { contrastText, mixColors } from '../../shared/colorSchemes';
 import type { FeedWire, ItemWire, SectionAppearanceWire, SectionWire } from '../../shared/ipcTypes';
 import { ItemList } from './ItemList';
@@ -14,16 +14,18 @@ type SectionPanelProps = {
   loading: boolean;
   error: string | null;
   warning: string | null;
+  hasOlder?: boolean;
   progress?: number;
   appearance?: SectionAppearanceWire;
   dayWindow?: number | null;
   onDayWindowChange(sectionKey: string, days: number | null): void;
   onRefresh(sectionId: number): void;
+  onLoadOlder(sectionId: number): void;
   onMarkSeen(sectionId: number): void;
-  openExternalItem(sectionId: number, item: ItemWire): void;
+  onExportDiagnostics(): void;
+  openItem(sectionId: number, item: ItemWire): void;
   onToggleImportant(sectionId: number, item: ItemWire): void;
-  onToggleFeed(feed: FeedWire): void;
-  onToggleMute(feed: FeedWire): void;
+  onToggleMute(feed: FeedWire, next: boolean): void;
   onUpdateInterval(feed: FeedWire, minutes: number | null): void;
   onRemoveFeed(feed: FeedWire): void;
 };
@@ -82,6 +84,7 @@ export function SectionPanel(props: SectionPanelProps) {
   const [sourcesOpen, setSourcesOpen] = React.useState(false);
   const feedCount = props.section.feeds.length;
   const activeCount = props.section.feeds.filter((feed) => feed.is_enabled === 1 && feed.is_muted !== 1).length;
+  const unreadCount = props.section.feeds.reduce((total, feed) => total + (feed.unread_count || 0), 0);
   const dayWindow = props.dayWindow === undefined ? DEFAULT_SECTION_DAY_WINDOW : props.dayWindow;
   const visibleItems = React.useMemo(
     () => filterItemsByDayWindow(props.items, dayWindow),
@@ -109,6 +112,7 @@ export function SectionPanel(props: SectionPanelProps) {
         <div className="section-heading">
           <h2 id={`section-${props.section.key}`}>{props.section.name}</h2>
           <p>{feedCount === 0 ? 'No feeds yet' : `${activeCount}/${feedCount} feeds active - ${visibleItems.length} articles`}</p>
+          {unreadCount > 0 ? <span className="unread-badge" aria-label={`${unreadCount} unread in ${props.section.name}`}>{unreadCount} unread</span> : null}
         </div>
         <div className="section-actions">
           <button className="primary" type="button" onClick={() => props.onRefresh(props.section.id)} disabled={feedCount === 0 || props.loading} title={HELP_TEXT.refreshSection}>Refresh</button>
@@ -143,33 +147,38 @@ export function SectionPanel(props: SectionPanelProps) {
               <div className="feed-strip" aria-label={`${props.section.name} feeds`}>
                 {props.section.feeds.length === 0 ? (
                   <div className="feed-empty">Add an RSS or Atom URL to start this section.</div>
-                ) : props.section.feeds.map((feed) => (
-                  <div key={feed.id} className={feed.is_enabled && !feed.is_muted ? 'feed-chip' : 'feed-chip disabled'}>
-                    <div className="feed-chip-main">
-                      <strong>{feed.title || new URL(feed.url).hostname}</strong>
-                      <span>{feed.item_count} items - {feed.unread_count} unread</span>
-                      <span>{fmtTime(feed.last_fetched_at)}</span>
-                      <span>{feed.is_muted ? 'Muted' : feed.is_enabled ? 'Enabled' : 'Disabled'} - every {feed.fetch_interval_minutes || 30} minutes</span>
-                      {feed.last_error ? <em>{feed.last_error}</em> : null}
+                ) : props.section.feeds.map((feed) => {
+                  const silenced = feed.is_muted === 1 || feed.is_enabled !== 1;
+                  return (
+                    <div key={feed.id} className={silenced ? 'feed-chip disabled' : 'feed-chip'}>
+                      <div className="feed-chip-main">
+                        <strong>{feed.title || new URL(feed.url).hostname}</strong>
+                        <span>{feed.item_count} items - {feed.unread_count} unread</span>
+                        <span>{fmtTime(feed.last_fetched_at)}</span>
+                        <span className="feed-chip-status">
+                          {silenced ? <VolumeXIcon size={11} aria-hidden="true" /> : null}
+                          {silenced ? 'Muted' : 'Enabled'} - every {feed.fetch_interval_minutes || 30} minutes
+                        </span>
+                        {feed.last_error ? <em>{feed.last_error}</em> : null}
+                      </div>
+                      <div className="feed-chip-actions">
+                        <label className="compact-field">
+                          <span title={HELP_TEXT.sourceInterval}>Fetch interval (min)</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max="1440"
+                            defaultValue={feed.fetch_interval_minutes || 30}
+                            title={HELP_TEXT.sourceInterval}
+                            onBlur={(event) => props.onUpdateInterval(feed, Number(event.currentTarget.value) || null)}
+                          />
+                        </label>
+                        <button type="button" onClick={() => props.onToggleMute(feed, !silenced)} title={HELP_TEXT.muteFeed}>{silenced ? 'Unmute' : 'Mute'}</button>
+                        <button type="button" onClick={() => props.onRemoveFeed(feed)} title={HELP_TEXT.removeFeed}>Remove</button>
+                      </div>
                     </div>
-                    <div className="feed-chip-actions">
-                      <label className="compact-field">
-                        <span title={HELP_TEXT.sourceInterval}>Fetch interval (min)</span>
-                        <input
-                          type="number"
-                          min="1"
-                          max="1440"
-                          defaultValue={feed.fetch_interval_minutes || 30}
-                          title={HELP_TEXT.sourceInterval}
-                          onBlur={(event) => props.onUpdateInterval(feed, Number(event.currentTarget.value) || null)}
-                        />
-                      </label>
-                      <button type="button" onClick={() => props.onToggleMute(feed)} title={HELP_TEXT.muteFeed}>{feed.is_muted ? 'Unmute' : 'Mute'}</button>
-                      <button type="button" onClick={() => props.onToggleFeed(feed)} title={HELP_TEXT.disableFeed}>{feed.is_enabled ? 'Disable' : 'Enable'}</button>
-                      <button type="button" onClick={() => props.onRemoveFeed(feed)} title={HELP_TEXT.removeFeed}>Remove</button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               <div className="scroll-fade rail-scroll-fade" aria-hidden="true" />
             </>
@@ -178,17 +187,30 @@ export function SectionPanel(props: SectionPanelProps) {
 
         <div className="section-feed-window">
           <div className="section-feed-scroll">
-            {props.loading ? <div className="state-card" role="status">Loading latest items...</div> : null}
-            {!props.loading && props.error ? <div className="state-card error" role="alert">{props.error}</div> : null}
-            {!props.loading && !props.error && props.warning ? <div className="state-card warning" role="status">{props.warning}</div> : null}
-            {!props.loading && !props.error ? (
-              <ItemList
-                sectionId={props.section.id}
-                items={visibleItems}
-                openExternalItem={props.openExternalItem}
-                onToggleImportant={props.onToggleImportant}
-              />
+            {props.loading && props.items.length === 0 ? <div className="state-card" role="status">Loading latest items...</div> : null}
+            {props.error ? (
+              <div className="state-card error" role="alert">
+                <p>{props.error}</p>
+                <button type="button" className="error-diagnostics" onClick={() => props.onExportDiagnostics()} title={HELP_TEXT.diagnostics}>
+                  Export diagnostics
+                </button>
+              </div>
             ) : null}
+            {!props.error && props.warning ? <div className="state-card warning" role="status">{props.warning}</div> : null}
+            {props.items.length > 0 ? (
+              <>
+                {props.loading ? <div className="section-loading-inline" role="status">Updating items</div> : null}
+                <ItemList
+                  sectionId={props.section.id}
+                  items={props.items}
+                  openItem={props.openItem}
+                  onToggleImportant={props.onToggleImportant}
+                />
+                {props.hasOlder ? (
+                  <button type="button" className="load-older" onClick={() => props.onLoadOlder(props.section.id)}>Load older items</button>
+                ) : null}
+              </>
+            ) : (!props.loading && !props.error ? <div className="state-card">No unread items. Refresh the section or add feeds to bring news here.</div> : null)}
           </div>
           <div className="scroll-fade news-scroll-fade" aria-hidden="true" />
         </div>

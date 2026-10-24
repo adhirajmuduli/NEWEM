@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
 import { assertValidFeedUrl } from '../rss/url';
-import { CATALOG_VERSION, SECTION_CONFIG, type SectionConfig } from '../../config/sections';
+import { CATALOG_VERSION, RETIRED_FEED_URLS, SECTION_CONFIG, type SectionConfig } from '../../config/sections';
 
 const CATALOG_SETTING_KEY = 'catalog_version';
 
@@ -52,7 +52,7 @@ function ensureFeed(db: Database.Database, config: SectionConfig, title: string,
     "INSERT INTO feeds(url, title, is_enabled, fetch_interval_minutes) " +
     "VALUES (@url, @title, @enabled, @interval) " +
     "ON CONFLICT(url) DO UPDATE SET " +
-    "title=CASE WHEN feeds.title IS NULL OR TRIM(feeds.title) = '' THEN excluded.title ELSE feeds.title END, " +
+    "title=excluded.title, " +
     "updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') RETURNING id"
   ).get({
     url,
@@ -62,7 +62,21 @@ function ensureFeed(db: Database.Database, config: SectionConfig, title: string,
   }) as { id: number };
 }
 
+function retireFeeds(db: Database.Database) {
+  for (const inputUrl of RETIRED_FEED_URLS) {
+    const url = assertValidFeedUrl(inputUrl);
+    const feed = db.prepare('SELECT id FROM feeds WHERE url=?').get(url) as { id: number } | undefined;
+    if (!feed) continue;
+    db.prepare('DELETE FROM feed_sections WHERE feed_id=?').run(feed.id);
+    const remaining = (db.prepare('SELECT COUNT(*) AS count FROM feed_sections WHERE feed_id=?').get(feed.id) as { count: number }).count;
+    if (remaining === 0) {
+      db.prepare('DELETE FROM feeds WHERE id=?').run(feed.id);
+    }
+  }
+}
+
 function applyCatalog(db: Database.Database, writeVersion: boolean) {
+  retireFeeds(db);
   const existingCount = (db.prepare('SELECT COUNT(*) AS count FROM sections').get() as { count: number }).count;
   let nextPosition = (db.prepare('SELECT COALESCE(MAX(position_index), -1) + 1 AS position FROM sections').get() as { position: number }).position;
   let createdSections = 0;
@@ -101,12 +115,4 @@ export function syncCatalogVersionIfNeeded(db: Database.Database) {
     return { applied: false, createdSections: 0, createdMappings: 0, version: CATALOG_VERSION };
   }
   return db.transaction(() => applyCatalog(db, true))();
-}
-
-export function syncSectionsFromConfig(db: Database.Database) {
-  return db.transaction(() => applyCatalog(db, false))();
-}
-
-export function seedSectionsFromConfigIfEmpty(db: Database.Database) {
-  return syncCatalogVersionIfNeeded(db);
 }

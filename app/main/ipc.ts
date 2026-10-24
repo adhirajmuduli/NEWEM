@@ -21,10 +21,12 @@ import {
   listFeedsForSection,
   listSections,
   reorderSections,
+  sectionKeyFromName,
   updateSection,
   unassignFeedFromSection,
+  type Section,
 } from '../core/storage/dao/sectionsDao';
-import { getItemsBySection, markSeen as markItemsSeen, markSectionSeen, ItemRow, markItemRead, toggleItemImportant } from '../core/storage/dao/itemsDao';
+import { markSectionSeen, markItemRead, toggleItemImportant, querySectionItems } from '../core/storage/dao/itemsDao';
 import { getLayout, getShowSeen, setLayout } from '../core/storage/dao/settingsDao';
 import { resolveFeedInput } from '../core/rss/discovery';
 import { syncAllFeeds, syncFeeds, syncSection, type ManualSyncResult, type SyncProgress } from '../core/rss/sync';
@@ -33,6 +35,7 @@ import { exportOpml, importOpml } from '../core/storage/portability';
 import { exportDatabaseBackup, exportDiagnostics } from './exports';
 import { withModule } from './logging';
 import { isAllowedExternalUrl } from './security';
+import { reader } from './reader';
 import {
   booleanValue,
   handleValidated,
@@ -56,6 +59,10 @@ import type {
   LayoutSetPayload,
   MarkItemReadPayload,
   OpmlImportPayload,
+  ReaderBoundsWire,
+  ReaderCloseTabPayload,
+  ReaderOpenPayload,
+  ReaderRepositionPayload,
   SectionCreatePayload,
   SectionDeletePayload,
   SectionReorderPayload,
@@ -67,18 +74,37 @@ export type SyncTriggerResponse = ManualSyncResult;
 
 const log = withModule('ipc');
 
-function feedCounts(db: ReturnType<typeof getDb>, feedId: number) {
+type FeedCounts = { item_count: number; unread_count: number | null };
+
+function feedCounts(db: ReturnType<typeof getDb>, feedId: number): FeedCounts {
   return db.prepare(
     `SELECT COUNT(i.id) AS item_count,
             SUM(CASE WHEN COALESCE(s.is_read, 0) = 0 THEN 1 ELSE 0 END) AS unread_count
      FROM items i
      LEFT JOIN item_state s ON s.item_id = i.id
      WHERE i.feed_id = ?`
-  ).get(feedId) as { item_count: number; unread_count: number | null };
+  ).get(feedId) as FeedCounts;
 }
 
-function feedWire(db: ReturnType<typeof getDb>, feed: any) {
-  const counts = feedCounts(db, feed.id);
+function feedCountsForFeeds(db: ReturnType<typeof getDb>, feedIds: number[]): Map<number, FeedCounts> {
+  const counts = new Map<number, FeedCounts>();
+  if (feedIds.length === 0) return counts;
+  const placeholders = feedIds.map(() => '?').join(', ');
+  const rows = db.prepare(
+    `SELECT i.feed_id,
+            COUNT(i.id) AS item_count,
+            SUM(CASE WHEN COALESCE(s.is_read, 0) = 0 THEN 1 ELSE 0 END) AS unread_count
+     FROM items i
+     LEFT JOIN item_state s ON s.item_id = i.id
+     WHERE i.feed_id IN (${placeholders})
+     GROUP BY i.feed_id`
+  ).all(...feedIds) as Array<FeedCounts & { feed_id: number }>;
+  for (const row of rows) counts.set(row.feed_id, { item_count: row.item_count, unread_count: row.unread_count });
+  return counts;
+}
+
+function feedWire(db: ReturnType<typeof getDb>, feed: any, counts?: FeedCounts) {
+  const resolved = counts ?? feedCounts(db, feed.id);
   return {
     id: feed.id,
     url: feed.url,
@@ -89,18 +115,30 @@ function feedWire(db: ReturnType<typeof getDb>, feed: any) {
     fetch_interval_minutes: feed.fetch_interval_minutes ?? null,
     is_enabled: feed.is_enabled as 0 | 1,
     is_muted: (feed.is_muted ?? 0) as 0 | 1,
-    item_count: counts.item_count ?? 0,
-    unread_count: counts.unread_count ?? 0,
+    item_count: resolved.item_count ?? 0,
+    unread_count: resolved.unread_count ?? 0,
   };
 }
 
-function sectionWire(db: ReturnType<typeof getDb>, section: any) {
-  return { ...section, feeds: (listFeedsForSection(db, section.id) as any[]).map((feed) => feedWire(db, feed)) };
+function sectionWire(db: ReturnType<typeof getDb>, section: any, counts?: Map<number, FeedCounts>) {
+  const feeds = listFeedsForSection(db, section.id) as any[];
+  return {
+    id: section.id,
+    key: section.key,
+    name: section.name,
+    position_index: section.position_index,
+    feeds: feeds.map((feed) => feedWire(db, feed, counts?.get(feed.id))),
+  };
 }
 
 function listSectionsResponse() {
   const db = getDb();
-  return { sections: listSections(db).map((section) => sectionWire(db, section)) };
+  const sections = listSections(db);
+  const feedIds = sections.flatMap(
+    (section) => (listFeedsForSection(db, section.id) as Array<{ id: number }>).map((feed) => feed.id)
+  );
+  const counts = feedCountsForFeeds(db, feedIds);
+  return { sections: sections.map((section) => sectionWire(db, section, counts)) };
 }
 
 function validateSyncTrigger(value: unknown): SyncTriggerPayload {
@@ -206,26 +244,10 @@ function validateItemId(value: unknown): MarkItemReadPayload {
   return { itemId: numberValue(payload.itemId, 'payload.itemId', { integer: true, min: 1 }) };
 }
 
-function validateMarkItemsSeen(value: unknown) {
-  const payload = optionalPayload(value);
-  rejectUnknown(payload, ['itemIds'], 'payload');
-  if (!Array.isArray(payload.itemIds)) throw new Error('payload.itemIds must be an array');
-  return { itemIds: payload.itemIds.map((id, index) => numberValue(id, `payload.itemIds[${index}]`, { integer: true, min: 1 })) };
-}
-
 function validateMarkSectionSeen(value: unknown) {
   const payload = optionalPayload(value);
   rejectUnknown(payload, ['sectionId'], 'payload');
   return { sectionId: numberValue(payload.sectionId, 'payload.sectionId', { integer: true, min: 1 }) };
-}
-
-function validateImportantQuery(value: unknown) {
-  const payload = optionalPayload(value);
-  rejectUnknown(payload, ['limit', 'before'], 'payload');
-  return {
-    limit: optionalNumber(payload.limit, 'payload.limit', { integer: true, min: 1, max: 200 }),
-    before: payload.before === null ? null : optionalString(payload.before, 'payload.before', { min: 1, max: 80 }),
-  };
 }
 
 function validateLayoutSet(value: unknown): LayoutSetPayload {
@@ -255,11 +277,54 @@ function validateExternalOpen(value: unknown): ExternalOpenPayload {
   return { url };
 }
 
+function validateReaderBounds(value: unknown): ReaderBoundsWire {
+  const bounds = optionalPayload(value);
+  rejectUnknown(bounds, ['x', 'y', 'width', 'height'], 'bounds');
+  return {
+    x: numberValue(bounds.x, 'bounds.x', { integer: true, min: 0, max: 100_000 }),
+    y: numberValue(bounds.y, 'bounds.y', { integer: true, min: 0, max: 100_000 }),
+    width: numberValue(bounds.width, 'bounds.width', { integer: true, min: 100, max: 100_000 }),
+    height: numberValue(bounds.height, 'bounds.height', { integer: true, min: 100, max: 100_000 }),
+  };
+}
+
+function validateReaderOpen(value: unknown): ReaderOpenPayload {
+  const payload = optionalPayload(value);
+  rejectUnknown(payload, ['sectionKey', 'url', 'title', 'bounds'], 'payload');
+  return {
+    sectionKey: stringValue(payload.sectionKey, 'payload.sectionKey', { min: 1, max: 120 }),
+    url: stringValue(payload.url, 'payload.url', { min: 1, max: 2048 }),
+    title: stringValue(payload.title, 'payload.title', { min: 1, max: 300 }),
+    bounds: validateReaderBounds(payload.bounds),
+  };
+}
+
+function validateReaderTabId(value: unknown): ReaderCloseTabPayload {
+  const payload = optionalPayload(value);
+  rejectUnknown(payload, ['tabId'], 'payload');
+  return { tabId: numberValue(payload.tabId, 'payload.tabId', { integer: true, min: 1 }) };
+}
+
+function validateReaderReposition(value: unknown): ReaderRepositionPayload {
+  const payload = optionalPayload(value);
+  rejectUnknown(payload, ['sectionKey', 'bounds'], 'payload');
+  return {
+    sectionKey: stringValue(payload.sectionKey, 'payload.sectionKey', { min: 1, max: 120 }),
+    bounds: validateReaderBounds(payload.bounds),
+  };
+}
+
 export function registerIpcHandlers(ipc: IpcMainLike) {
   handleValidated(ipc, 'sections:list', () => ({}), passthroughResponse, () => listSectionsResponse());
 
   handleValidated(ipc, 'sections:create', validateSectionCreate, passthroughResponse, (payload) => {
     const db = getDb();
+    const stableKey = payload.key ?? sectionKeyFromName(payload.name);
+    const existing = db.prepare('SELECT * FROM sections WHERE key=?').get(stableKey) as Section | undefined;
+    if (existing) {
+      if (existing.name === payload.name) return { section: sectionWire(db, existing), changed: 0 };
+      throw new Error(`A section normalizing to key "${stableKey}" already exists`);
+    }
     const section = createSection(db, payload.name, payload.position, payload.key);
     return { section: sectionWire(db, section), changed: 1 };
   });
@@ -297,7 +362,7 @@ export function registerIpcHandlers(ipc: IpcMainLike) {
       const changed = assignFeedToSection(db, feed.id, payload.sectionId);
       return { feed, changed };
     })();
-    log.info('feed added', { feedId: result.feed.id, sectionId: payload.sectionId, discovered: resolved.discovered, mappingCreated: result.changed === 1 });
+    log.info('feed_added', { feedId: result.feed.id, sectionId: payload.sectionId, discovered: resolved.discovered, mappingCreated: result.changed === 1 });
     return { feed: feedWire(db, result.feed), changed: result.changed };
   });
 
@@ -307,7 +372,14 @@ export function registerIpcHandlers(ipc: IpcMainLike) {
   });
 
   handleValidated(ipc, 'feeds:removeFromSection', validateFeedRemove, passthroughResponse, (payload) => {
-    unassignFeedFromSection(getDb(), payload.feedId, payload.sectionId);
+    const db = getDb();
+    unassignFeedFromSection(db, payload.feedId, payload.sectionId);
+    const remaining = (db.prepare('SELECT COUNT(*) AS count FROM feed_sections WHERE feed_id=?').get(payload.feedId) as { count: number }).count;
+    if (remaining === 0) {
+      db.prepare('DELETE FROM fetch_log WHERE feed_id=?').run(payload.feedId);
+      db.prepare('DELETE FROM feeds WHERE id=?').run(payload.feedId);
+      log.info('orphan_feed_removed', { feedId: payload.feedId });
+    }
     return { changed: 1 };
   });
 
@@ -345,45 +417,22 @@ export function registerIpcHandlers(ipc: IpcMainLike) {
   handleValidated(ipc, 'items:query', validateItemsQuery, passthroughResponse, (payload) => {
     const db = getDb();
     const includeSeen = payload.includeSeen ?? getShowSeen(db);
-    const items = getItemsBySection(db, payload.sectionId, {
+    const { items, truncated } = querySectionItems(db, payload.sectionId, {
       includeSeen, all: payload.all, limit: payload.limit, before: payload.before ?? null, query: payload.query, feedId: payload.feedId,
       importantOnly: payload.importantOnly, unreadOnly: payload.unreadOnly,
       publishedAfter: payload.publishedAfter ?? null, publishedBefore: payload.publishedBefore ?? null,
     });
-    return { items };
+    return { items, truncated };
   });
 
-  handleValidated(ipc, 'items:markSeen', validateMarkItemsSeen, passthroughResponse, (payload) => ({ changed: markItemsSeen(getDb(), payload.itemIds) }));
   handleValidated(ipc, 'sections:markSeen', validateMarkSectionSeen, passthroughResponse, (payload) => ({ changed: markSectionSeen(getDb(), payload.sectionId) }));
   handleValidated(ipc, 'items:markRead', validateItemId, passthroughResponse, (payload) => ({ changed: markItemRead(getDb(), payload.itemId) }));
-  handleValidated(ipc, 'item:markRead', validateItemId, passthroughResponse, (payload) => ({ changed: markItemRead(getDb(), payload.itemId) }));
   handleValidated(ipc, 'items:toggleImportant', validateItemId, passthroughResponse, (payload) => ({ is_important: toggleItemImportant(getDb(), payload.itemId) }));
-  handleValidated(ipc, 'item:toggleImportant', validateItemId, passthroughResponse, (payload) => ({ is_important: toggleItemImportant(getDb(), payload.itemId) }));
-
-  handleValidated(ipc, 'items:important', validateImportantQuery, passthroughResponse, (payload) => {
-    const db = getDb();
-    const limit = Math.max(1, Math.min(200, payload?.limit ?? 50));
-    const beforeClause = payload?.before ? 'AND i.published_at < @before' : '';
-    const stmt = db.prepare(
-      `SELECT i.*, f.title AS feed_title, f.site_url,
-              COALESCE(s.is_read, 0) AS is_read,
-              COALESCE(s.is_important, 0) AS is_important,
-              s.read_at
-       FROM items i
-       JOIN feeds f ON f.id = i.feed_id
-       JOIN item_state s ON s.item_id = i.id AND s.is_important = 1
-       WHERE 1=1 ${beforeClause}
-       ORDER BY COALESCE(i.published_at, i.created_at) DESC
-       LIMIT @limit`
-    );
-    const items = stmt.all({ limit, before: payload?.before ?? null }) as ItemRow[];
-    return { items };
-  });
 
   handleValidated(ipc, 'portability:exportOpml', () => ({}), passthroughResponse, () => ({ opml: exportOpml(getDb()) }));
   handleValidated(ipc, 'portability:importOpml', validateOpmlImport, passthroughResponse, (payload) => {
     const result = importOpml(getDb(), payload.opml, payload.sectionId);
-    log.info('OPML imported', result);
+    log.info('opml_imported', result);
     return result;
   });
   handleValidated(ipc, 'portability:backup', () => ({}), passthroughResponse, async () => ({
@@ -401,6 +450,12 @@ export function registerIpcHandlers(ipc: IpcMainLike) {
     await electronShell.openExternal(payload.url);
     return { opened: true };
   });
+
+  handleValidated(ipc, 'reader:open', validateReaderOpen, passthroughResponse, (payload) => ({ state: reader.open(payload) }));
+  handleValidated(ipc, 'reader:activateTab', validateReaderTabId, passthroughResponse, (payload) => ({ state: reader.activate(payload.tabId) }));
+  handleValidated(ipc, 'reader:closeTab', validateReaderTabId, passthroughResponse, (payload) => ({ state: reader.closeTab(payload.tabId) }));
+  handleValidated(ipc, 'reader:close', () => ({}), passthroughResponse, () => ({ state: reader.closeAll() }));
+  handleValidated(ipc, 'reader:reposition', validateReaderReposition, passthroughResponse, (payload) => ({ state: reader.reposition(payload) }));
 }
 
 export {};

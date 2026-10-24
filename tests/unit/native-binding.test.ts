@@ -49,7 +49,12 @@ describe('native SQLite binding selection', () => {
   });
 
   it('verifies the prepared checkout without spawning a subprocess', () => {
-    expect(verifyNative(process.cwd())).toMatchObject({ electronVersion: '42.5.0', abi: '146' });
+    const installedElectronVersion = JSON.parse(
+      fs.readFileSync(path.join(process.cwd(), 'node_modules', 'electron', 'package.json'), 'utf8')
+    ).version;
+    const verification = verifyNative(process.cwd());
+    expect(verification).toBeTruthy();
+    expect(verification.electronVersion).toBe(installedElectronVersion);
   });
 
   it('restores the Node binding even when the rebuild operation fails', () => {

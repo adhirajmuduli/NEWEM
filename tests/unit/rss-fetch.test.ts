@@ -1,12 +1,18 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchFeed } from '../../app/core/rss/fetch';
 import { normalizeFeedUrl } from '../../app/core/rss/url';
+import { setHostLookupOverride } from '../../app/core/rss/dnsGuard';
 
 function response(body: string, init?: ResponseInit) {
   return new Response(body, init);
 }
 
+beforeEach(() => {
+  setHostLookupOverride(async () => ['203.0.113.10']);
+});
+
 afterEach(() => {
+  setHostLookupOverride(null);
   vi.restoreAllMocks();
 });
 
@@ -103,5 +109,41 @@ describe('fetchFeed', () => {
 
     expect(result.status).toBe('error');
     expect(result.error?.code).toBe('private_address');
+  });
+
+  it('refuses to connect when the host resolves to a private address', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    setHostLookupOverride(async () => ['93.184.216.34', '192.168.0.10']);
+
+    const result = await fetchFeed('https://rebind.example.com/feed.xml');
+
+    expect(result.status).toBe('error');
+    expect(result.error?.code).toBe('private_address');
+    expect(result.error?.message).toContain('192.168.0.10');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('revalidates resolution on every redirect hop', async () => {
+    let hops = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        hops += 1;
+        if (hops === 1) return response('', { status: 302, headers: { location: 'https://hop.example.com/feed.xml' } });
+        return response('<rss><channel><title>T</title></channel></rss>', { status: 200 });
+      })
+    );
+    const lookup = vi.fn(async (hostname: string) => {
+      if (hostname === 'hop.example.com') return ['10.0.0.7'];
+      return ['203.0.113.10'];
+    });
+    setHostLookupOverride(lookup);
+
+    const result = await fetchFeed('https://example.com/feed.xml');
+
+    expect(result.status).toBe('error');
+    expect(result.error?.code).toBe('private_address');
+    expect(lookup).toHaveBeenCalledTimes(2);
   });
 });

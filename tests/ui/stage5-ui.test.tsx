@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+﻿// @vitest-environment jsdom
 import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
@@ -30,7 +30,7 @@ function makeApi() {
   let nextFeedId = 1;
 
   const api: PreloadApi = {
-    version: 1,
+    version: 2,
     listSections: vi.fn(async () => ({ sections })),
     createSection: vi.fn(async ({ name }) => {
       const section = { id: nextSectionId++, key: name.toLowerCase(), name, position_index: sections.length, feeds: [] };
@@ -73,11 +73,9 @@ function makeApi() {
     testFeed: vi.fn(async ({ url }) => ({ status: 'ok' as const, feedUrl: url, title: 'Valid Feed', site_url: null })),
     syncTrigger: vi.fn(async () => ({ status: 'ok' as const, scope: 'all' as const, requested: 1, triggered: 1, ok: 1, notModified: 0, errors: 0, newItems: 1, results: [] })),
     queryItems: vi.fn(async () => ({ items: [] })),
-    markItemsSeen: vi.fn(async () => ({ changed: 0 })),
     markSectionSeen: vi.fn(async () => ({ changed: 0 })),
     markItemRead: vi.fn(async () => ({ changed: 1 })),
     toggleItemImportant: vi.fn(async () => ({ is_important: 1 as const })),
-    queryImportant: vi.fn(async () => ({ items: [] })),
     getLayout: vi.fn(async () => ({ layout: { mode: 'stack' as const, panels: [], appearance: {} } })),
     setLayout: vi.fn(async ({ layout }) => ({ layout })),
     onSyncProgress: vi.fn(() => () => {}),
@@ -85,6 +83,12 @@ function makeApi() {
     importOpml: vi.fn(async () => ({ imported: 0, skipped: 0 })),
     exportBackup: vi.fn(async () => ({ filePath: 'backup.db' })),
     exportDiagnostics: vi.fn(async () => ({ filePath: 'diagnostics.json', entries: 0 })),
+      openReaderTab: vi.fn(async () => ({ state: null })),
+      activateReaderTab: vi.fn(async () => ({ state: null })),
+      closeReaderTab: vi.fn(async () => ({ state: null })),
+      closeReader: vi.fn(async () => ({ state: null })),
+      repositionReader: vi.fn(async () => ({ state: null })),
+
     openExternal: vi.fn(async () => ({ opened: true })),
     closeApplication: vi.fn(async () => ({ closing: true as const })),
   };
