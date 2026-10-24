@@ -35,7 +35,8 @@ function panel(overrides: Partial<React.ComponentProps<typeof SectionPanel>> = {
       onRefresh={vi.fn()}
       onLoadOlder={vi.fn()}
       onMarkSeen={vi.fn()}
-      openExternalItem={vi.fn()}
+      onExportDiagnostics={vi.fn()}
+      openItem={vi.fn()}
       onToggleImportant={vi.fn()}
       onToggleMute={vi.fn()}
       onUpdateInterval={vi.fn()}
@@ -83,12 +84,12 @@ describe('section news work surface', () => {
     expect(filterItemsByDayWindow([recent, old, unknown], 7, now).map((row) => row.id)).toEqual([12, 14]);
     expect(filterItemsByDayWindow([recent, old], null, now)).toHaveLength(2);
   });
-  it('uses only the title as the open action and places a compact important control in metadata', async () => {
+  it('opens the reader on title clicks and shows the section unread badge', async () => {
     const onToggleImportant = vi.fn();
-    const openExternalItem = vi.fn();
+    const openItem = vi.fn();
     document.body.innerHTML = '<div id="root"></div>';
     root = createRoot(document.getElementById('root')!);
-    await act(async () => root.render(panel({ onToggleImportant, openExternalItem })));
+    await act(async () => root.render(panel({ onToggleImportant, openItem })));
 
     expect([...document.querySelectorAll('button')].some((button) => button.textContent === 'Open')).toBe(false);
     const important = document.querySelector('.important-toggle') as HTMLButtonElement;
@@ -98,7 +99,12 @@ describe('section news work surface', () => {
 
     const title = document.querySelector('.item-title') as HTMLAnchorElement;
     await act(async () => title.click());
-    expect(openExternalItem).toHaveBeenCalledWith(1, item);
+    expect(openItem).toHaveBeenCalledWith(1, item);
+    expect(document.querySelector('.item-external')).toBeNull();
+
+    const badge = document.querySelector('.unread-badge') as HTMLElement;
+    expect(badge).toBeTruthy();
+    expect(badge.textContent).toContain('1 unread');
   });
 
   it('renders an uncapped item set incrementally to keep scrolling responsive', { timeout: 20_000 }, async () => {

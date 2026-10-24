@@ -1,0 +1,28 @@
+name: Catalog health
+
+on:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-catalog:
+    name: Verify shipped RSS catalog
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.17.0
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Compile main-process sources
+        run: npm run build:electron
+      - name: Verify every catalog feed through the app fetch pipeline
+        run: npm run verify:catalog

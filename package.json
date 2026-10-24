@@ -35,7 +35,8 @@
     "dist:all": "npm run prepare:package && electron-builder --win --mac --linux",
     "verify:package": "node scripts/verify-package.cjs",
     "validate:release": "npm run validate && npm run pack && npm run verify:package",
-    "install:app-deps": "electron-builder install-app-deps && npm rebuild better-sqlite3 && npm run rebuild:native"
+    "install:app-deps": "electron-builder install-app-deps && npm rebuild better-sqlite3 && npm run rebuild:native",
+    "verify:catalog": "node scripts/verify-catalog-feeds.cjs"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.3.0",
@@ -43,13 +44,12 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
-    "fast-xml-parser": "^5.9.3",
+    "fast-xml-parser": "^5.11.2",
     "lucide-react": "^1.22.0",
     "react": "^19.2.7",
     "react-day-picker": "^10.0.1",
     "react-dom": "^19.2.7",
-    "tailwind-merge": "^3.6.0",
-    "undici": "^6.27.0"
+    "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.1",
@@ -62,8 +62,9 @@
     "autoprefixer": "^10.5.2",
     "copyfiles": "^2.4.1",
     "cpx2": "^7.0.2",
-    "electron": "^42.5.0",
+    "electron": "^42.11.18",
     "electron-builder": "^26.15.3",
+    "fast-check": "4.10.2",
     "jsdom": "^29.1.1",
     "postcss": "^8.5.16",
     "rimraf": "^6.1.3",

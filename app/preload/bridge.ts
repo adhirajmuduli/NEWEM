@@ -1,4 +1,4 @@
-import { validateSyncCompletedWire, validateSyncProgressWire } from './validators';
+import { validateReaderStateWire, validateSyncCompletedWire, validateSyncProgressWire } from './validators';
 import type {
   ExternalOpenPayload,
   FeedAddToSectionPayload,
@@ -11,6 +11,11 @@ import type {
   MarkItemReadResponse,
   MarkSectionSeenPayload,
   OpmlImportPayload,
+  ReaderActivatePayload,
+  ReaderCloseTabPayload,
+  ReaderOpenPayload,
+  ReaderRepositionPayload,
+  ReaderStateWire,
   SyncProgressWire,
   SyncCompletedWire,
   PreloadApi,
@@ -81,6 +86,16 @@ const api: PreloadApi = {
   getLayout: () => invoke('layout:get'),
   setLayout: (payload: LayoutSetPayload) => invoke('layout:set', payload),
   openExternal: (payload: ExternalOpenPayload) => invoke('shell:openExternal', payload),
+  openReaderTab: (payload: ReaderOpenPayload) => invoke('reader:open', payload),
+  activateReaderTab: (payload: ReaderActivatePayload) => invoke('reader:activateTab', payload),
+  closeReaderTab: (payload: ReaderCloseTabPayload) => invoke('reader:closeTab', payload),
+  closeReader: () => invoke('reader:close'),
+  repositionReader: (payload: ReaderRepositionPayload) => invoke('reader:reposition', payload),
+  onReaderState: (listener: (state: ReaderStateWire | null) => void) => {
+    const wrapped = (_event: unknown, value: unknown) => listener(validateReaderStateWire(value));
+    ipcRenderer.on('reader:state', wrapped);
+    return () => ipcRenderer.removeListener('reader:state', wrapped);
+  },
   exportOpml: () => invoke('portability:exportOpml'),
   importOpml: (payload: OpmlImportPayload) => invoke('portability:importOpml', payload),
   exportBackup: () => invoke('portability:backup'),

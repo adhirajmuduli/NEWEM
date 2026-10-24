@@ -4,7 +4,7 @@ import path from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { closeDb, initDb } from '../../app/core/storage/db';
 import { registerIpcHandlers } from '../../app/main/ipc';
-import { validateSyncCompletedWire, validateSyncProgressWire } from '../../app/preload/validators';
+import { validateReaderStateWire, validateSyncCompletedWire, validateSyncProgressWire } from '../../app/preload/validators';
 
 type Handler = (_evt: unknown, payload?: unknown) => Promise<unknown>;
 const tempRoots: string[] = [];
@@ -76,4 +76,32 @@ describe('validated IPC handlers', () => {
     expect(validateSyncCompletedWire({ source: 'scheduler', feedId: 7, sectionIds: [1, 2], status: 'ok', newItems: 3 })).toMatchObject({ feedId: 7 });
     expect(() => validateSyncCompletedWire({ source: 'scheduler', feedId: 7, sectionIds: [1], status: 'ok', newItems: 3, injected: true })).toThrow(/not allowed/);
     expect(() => validateSyncProgressWire({ scope: 'all', completed: 1, total: 2, percent: '50' })).toThrow(/must be a number/);
+  });
+
+  it('validates reader payloads and pushed reader state strictly', async () => {
+    const handlers = setupHandlers();
+    const bounds = { x: 0, y: 0, width: 600, height: 800 };
+    await expect(handlers.get('reader:open')!(null, { sectionKey: 'world', url: 'https://example.com/a', title: 'A', bounds: { ...bounds, x: -1 } })).rejects.toThrow();
+    await expect(handlers.get('reader:open')!(null, { sectionKey: 'world', url: 'https://example.com/a', title: 'A', bounds: { ...bounds, width: 10 } })).rejects.toThrow();
+    await expect(handlers.get('reader:open')!(null, { sectionKey: 'world', url: 'https://example.com/a', title: 'A', bounds, injected: true })).rejects.toThrow(/not allowed/);
+    await expect(handlers.get('reader:open')!(null, { sectionKey: 'world', url: '', title: 'A', bounds })).rejects.toThrow();
+    await expect(handlers.get('reader:reposition')!(null, { bounds })).rejects.toThrow();
+    await expect(handlers.get('reader:activateTab')!(null, { tabId: 0 })).rejects.toThrow();
+    await expect(handlers.get('reader:closeTab')!(null, { tabId: 1.5 })).rejects.toThrow();
+
+    expect(validateReaderStateWire(null)).toBeNull();
+    expect(validateReaderStateWire({
+      tabs: [{ tabId: 1, url: 'https://example.com/a', title: 'A', sectionKey: 'world' }],
+      activeTabId: 1,
+      dockSectionKey: 'world',
+      dockBounds: { x: 600, y: 0, width: 600, height: 800 },
+    })).toMatchObject({ activeTabId: 1 });
+    expect(() => validateReaderStateWire({ tabs: [], activeTabId: 'one', dockSectionKey: null, dockBounds: null })).toThrow();
+    expect(() => validateReaderStateWire({
+      tabs: [{ tabId: 1, url: 'https://example.com/a', title: 'A', sectionKey: 'world' }],
+      activeTabId: 1,
+      dockSectionKey: null,
+      dockBounds: null,
+      injected: true,
+    })).toThrow(/not allowed/);
   });});

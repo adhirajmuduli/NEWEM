@@ -99,7 +99,11 @@ export class Scheduler {
   private async tick() {
     const db = getDb();
     const now = Date.now();
+    const mappedFeedIds = new Set(
+      (db.prepare('SELECT DISTINCT feed_id FROM feed_sections').all() as Array<{ feed_id: number }>).map((row) => row.feed_id)
+    );
     const dueFeeds = listFeeds(db).filter((feed) =>
+      mappedFeedIds.has(feed.id) &&
       feed.is_enabled === 1 &&
       feed.is_muted !== 1 &&
       !this.inFlight.has(feed.id) &&

@@ -1,5 +1,5 @@
 import React from 'react';
-import { PanelLeftCloseIcon, PanelLeftOpenIcon } from 'lucide-react';
+import { PanelLeftCloseIcon, PanelLeftOpenIcon, VolumeXIcon } from 'lucide-react';
 import { contrastText, mixColors } from '../../shared/colorSchemes';
 import type { FeedWire, ItemWire, SectionAppearanceWire, SectionWire } from '../../shared/ipcTypes';
 import { ItemList } from './ItemList';
@@ -22,7 +22,8 @@ type SectionPanelProps = {
   onRefresh(sectionId: number): void;
   onLoadOlder(sectionId: number): void;
   onMarkSeen(sectionId: number): void;
-  openExternalItem(sectionId: number, item: ItemWire): void;
+  onExportDiagnostics(): void;
+  openItem(sectionId: number, item: ItemWire): void;
   onToggleImportant(sectionId: number, item: ItemWire): void;
   onToggleMute(feed: FeedWire, next: boolean): void;
   onUpdateInterval(feed: FeedWire, minutes: number | null): void;
@@ -83,6 +84,7 @@ export function SectionPanel(props: SectionPanelProps) {
   const [sourcesOpen, setSourcesOpen] = React.useState(false);
   const feedCount = props.section.feeds.length;
   const activeCount = props.section.feeds.filter((feed) => feed.is_enabled === 1 && feed.is_muted !== 1).length;
+  const unreadCount = props.section.feeds.reduce((total, feed) => total + (feed.unread_count || 0), 0);
   const dayWindow = props.dayWindow === undefined ? DEFAULT_SECTION_DAY_WINDOW : props.dayWindow;
   const visibleItems = React.useMemo(
     () => filterItemsByDayWindow(props.items, dayWindow),
@@ -110,6 +112,7 @@ export function SectionPanel(props: SectionPanelProps) {
         <div className="section-heading">
           <h2 id={`section-${props.section.key}`}>{props.section.name}</h2>
           <p>{feedCount === 0 ? 'No feeds yet' : `${activeCount}/${feedCount} feeds active - ${visibleItems.length} articles`}</p>
+          {unreadCount > 0 ? <span className="unread-badge" aria-label={`${unreadCount} unread in ${props.section.name}`}>{unreadCount} unread</span> : null}
         </div>
         <div className="section-actions">
           <button className="primary" type="button" onClick={() => props.onRefresh(props.section.id)} disabled={feedCount === 0 || props.loading} title={HELP_TEXT.refreshSection}>Refresh</button>
@@ -152,7 +155,10 @@ export function SectionPanel(props: SectionPanelProps) {
                         <strong>{feed.title || new URL(feed.url).hostname}</strong>
                         <span>{feed.item_count} items - {feed.unread_count} unread</span>
                         <span>{fmtTime(feed.last_fetched_at)}</span>
-                        <span>{silenced ? 'Muted' : 'Enabled'} - every {feed.fetch_interval_minutes || 30} minutes</span>
+                        <span className="feed-chip-status">
+                          {silenced ? <VolumeXIcon size={11} aria-hidden="true" /> : null}
+                          {silenced ? 'Muted' : 'Enabled'} - every {feed.fetch_interval_minutes || 30} minutes
+                        </span>
                         {feed.last_error ? <em>{feed.last_error}</em> : null}
                       </div>
                       <div className="feed-chip-actions">
@@ -182,7 +188,14 @@ export function SectionPanel(props: SectionPanelProps) {
         <div className="section-feed-window">
           <div className="section-feed-scroll">
             {props.loading && props.items.length === 0 ? <div className="state-card" role="status">Loading latest items...</div> : null}
-            {props.error ? <div className="state-card error" role="alert">{props.error}</div> : null}
+            {props.error ? (
+              <div className="state-card error" role="alert">
+                <p>{props.error}</p>
+                <button type="button" className="error-diagnostics" onClick={() => props.onExportDiagnostics()} title={HELP_TEXT.diagnostics}>
+                  Export diagnostics
+                </button>
+              </div>
+            ) : null}
             {!props.error && props.warning ? <div className="state-card warning" role="status">{props.warning}</div> : null}
             {props.items.length > 0 ? (
               <>
@@ -190,7 +203,7 @@ export function SectionPanel(props: SectionPanelProps) {
                 <ItemList
                   sectionId={props.section.id}
                   items={props.items}
-                  openExternalItem={props.openExternalItem}
+                  openItem={props.openItem}
                   onToggleImportant={props.onToggleImportant}
                 />
                 {props.hasOlder ? (

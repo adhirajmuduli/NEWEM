@@ -327,8 +327,11 @@ export async function syncAllFeeds(
   opts?: FetchFeedOptions,
   onProgress?: (progress: SyncProgress) => void
 ) {
+  const mappedFeedIds = new Set(
+    (db.prepare('SELECT DISTINCT feed_id FROM feed_sections').all() as Array<{ feed_id: number }>).map((row) => row.feed_id)
+  );
   const feeds = listFeeds(db)
-    .filter((feed) => feed.is_enabled === 1 && feed.is_muted !== 1);
+    .filter((feed) => mappedFeedIds.has(feed.id) && feed.is_enabled === 1 && feed.is_muted !== 1);
   return syncFeeds(db, feeds.map((feed) => feed.id), 'all', opts, onProgress);
 }
 

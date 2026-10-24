@@ -120,6 +120,22 @@ export type OpmlImportResponse = { imported: number; skipped: number };
 export type BackupExportResponse = { filePath: string };
 export type DiagnosticsExportResponse = { filePath: string; entries: number };
 
+export const READER_TAB_STRIP_HEIGHT = 44;
+
+export type ReaderBoundsWire = { x: number; y: number; width: number; height: number };
+export type ReaderTabWire = { tabId: number; url: string; title: string; sectionKey: string };
+export type ReaderStateWire = {
+  tabs: ReaderTabWire[];
+  activeTabId: number | null;
+  dockSectionKey: string | null;
+  dockBounds: ReaderBoundsWire | null;
+};
+export type ReaderOpenPayload = { sectionKey: string; url: string; title: string; bounds: ReaderBoundsWire };
+export type ReaderActivatePayload = { tabId: number };
+export type ReaderCloseTabPayload = { tabId: number };
+export type ReaderRepositionPayload = { sectionKey: string; bounds: ReaderBoundsWire };
+export type ReaderStateResponse = { state: ReaderStateWire | null };
+
 export interface PreloadApi {
   readonly version: typeof PRELOAD_API_VERSION;
   listSections(): Promise<SectionsListResponse>;
@@ -141,6 +157,12 @@ export interface PreloadApi {
   getLayout(): Promise<LayoutGetResponse>;
   setLayout(payload: LayoutSetPayload): Promise<LayoutSetResponse>;
   openExternal(payload: ExternalOpenPayload): Promise<ExternalOpenResponse>;
+  openReaderTab(payload: ReaderOpenPayload): Promise<ReaderStateResponse>;
+  activateReaderTab(payload: ReaderActivatePayload): Promise<ReaderStateResponse>;
+  closeReaderTab(payload: ReaderCloseTabPayload): Promise<ReaderStateResponse>;
+  closeReader(): Promise<ReaderStateResponse>;
+  repositionReader(payload: ReaderRepositionPayload): Promise<ReaderStateResponse>;
+  onReaderState?(listener: (state: ReaderStateWire | null) => void): () => void;
   exportOpml(): Promise<OpmlExportResponse>;
   importOpml(payload: OpmlImportPayload): Promise<OpmlImportResponse>;
   exportBackup(): Promise<BackupExportResponse>;

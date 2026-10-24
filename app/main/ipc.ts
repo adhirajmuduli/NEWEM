@@ -35,6 +35,7 @@ import { exportOpml, importOpml } from '../core/storage/portability';
 import { exportDatabaseBackup, exportDiagnostics } from './exports';
 import { withModule } from './logging';
 import { isAllowedExternalUrl } from './security';
+import { reader } from './reader';
 import {
   booleanValue,
   handleValidated,
@@ -58,6 +59,10 @@ import type {
   LayoutSetPayload,
   MarkItemReadPayload,
   OpmlImportPayload,
+  ReaderBoundsWire,
+  ReaderCloseTabPayload,
+  ReaderOpenPayload,
+  ReaderRepositionPayload,
   SectionCreatePayload,
   SectionDeletePayload,
   SectionReorderPayload,
@@ -272,6 +277,43 @@ function validateExternalOpen(value: unknown): ExternalOpenPayload {
   return { url };
 }
 
+function validateReaderBounds(value: unknown): ReaderBoundsWire {
+  const bounds = optionalPayload(value);
+  rejectUnknown(bounds, ['x', 'y', 'width', 'height'], 'bounds');
+  return {
+    x: numberValue(bounds.x, 'bounds.x', { integer: true, min: 0, max: 100_000 }),
+    y: numberValue(bounds.y, 'bounds.y', { integer: true, min: 0, max: 100_000 }),
+    width: numberValue(bounds.width, 'bounds.width', { integer: true, min: 100, max: 100_000 }),
+    height: numberValue(bounds.height, 'bounds.height', { integer: true, min: 100, max: 100_000 }),
+  };
+}
+
+function validateReaderOpen(value: unknown): ReaderOpenPayload {
+  const payload = optionalPayload(value);
+  rejectUnknown(payload, ['sectionKey', 'url', 'title', 'bounds'], 'payload');
+  return {
+    sectionKey: stringValue(payload.sectionKey, 'payload.sectionKey', { min: 1, max: 120 }),
+    url: stringValue(payload.url, 'payload.url', { min: 1, max: 2048 }),
+    title: stringValue(payload.title, 'payload.title', { min: 1, max: 300 }),
+    bounds: validateReaderBounds(payload.bounds),
+  };
+}
+
+function validateReaderTabId(value: unknown): ReaderCloseTabPayload {
+  const payload = optionalPayload(value);
+  rejectUnknown(payload, ['tabId'], 'payload');
+  return { tabId: numberValue(payload.tabId, 'payload.tabId', { integer: true, min: 1 }) };
+}
+
+function validateReaderReposition(value: unknown): ReaderRepositionPayload {
+  const payload = optionalPayload(value);
+  rejectUnknown(payload, ['sectionKey', 'bounds'], 'payload');
+  return {
+    sectionKey: stringValue(payload.sectionKey, 'payload.sectionKey', { min: 1, max: 120 }),
+    bounds: validateReaderBounds(payload.bounds),
+  };
+}
+
 export function registerIpcHandlers(ipc: IpcMainLike) {
   handleValidated(ipc, 'sections:list', () => ({}), passthroughResponse, () => listSectionsResponse());
 
@@ -330,7 +372,14 @@ export function registerIpcHandlers(ipc: IpcMainLike) {
   });
 
   handleValidated(ipc, 'feeds:removeFromSection', validateFeedRemove, passthroughResponse, (payload) => {
-    unassignFeedFromSection(getDb(), payload.feedId, payload.sectionId);
+    const db = getDb();
+    unassignFeedFromSection(db, payload.feedId, payload.sectionId);
+    const remaining = (db.prepare('SELECT COUNT(*) AS count FROM feed_sections WHERE feed_id=?').get(payload.feedId) as { count: number }).count;
+    if (remaining === 0) {
+      db.prepare('DELETE FROM fetch_log WHERE feed_id=?').run(payload.feedId);
+      db.prepare('DELETE FROM feeds WHERE id=?').run(payload.feedId);
+      log.info('orphan_feed_removed', { feedId: payload.feedId });
+    }
     return { changed: 1 };
   });
 
@@ -401,6 +450,12 @@ export function registerIpcHandlers(ipc: IpcMainLike) {
     await electronShell.openExternal(payload.url);
     return { opened: true };
   });
+
+  handleValidated(ipc, 'reader:open', validateReaderOpen, passthroughResponse, (payload) => ({ state: reader.open(payload) }));
+  handleValidated(ipc, 'reader:activateTab', validateReaderTabId, passthroughResponse, (payload) => ({ state: reader.activate(payload.tabId) }));
+  handleValidated(ipc, 'reader:closeTab', validateReaderTabId, passthroughResponse, (payload) => ({ state: reader.closeTab(payload.tabId) }));
+  handleValidated(ipc, 'reader:close', () => ({}), passthroughResponse, () => ({ state: reader.closeAll() }));
+  handleValidated(ipc, 'reader:reposition', validateReaderReposition, passthroughResponse, (payload) => ({ state: reader.reposition(payload) }));
 }
 
 export {};

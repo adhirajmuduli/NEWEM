@@ -72,6 +72,7 @@ async function main() {
     console.log('');
     console.log('Failed URLs:');
     for (const r of failed) console.log(`  ${r.sectionKey} | ${r.title} | ${r.url} | ${r.result}`);
+    process.exitCode = 1;
   }
 }
 

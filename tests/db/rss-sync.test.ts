@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { closeDb, initDb } from '../../app/core/storage/db';
 import { createFeed, getFeed } from '../../app/core/storage/dao/feedsDao';
 import { assignFeedToSection, createSection } from '../../app/core/storage/dao/sectionsDao';
-import { syncFeedById } from '../../app/core/rss/sync';
+import { syncAllFeeds, syncFeedById } from '../../app/core/rss/sync';
 import { getItemsBySection } from '../../app/core/storage/dao/itemsDao';
 import { setHostLookupOverride } from '../../app/core/rss/dnsGuard';
 
@@ -206,5 +206,25 @@ describe('canonical RSS sync', () => {
     expect(row?.is_enabled).toBe(1);
     const retry = Date.parse(row?.next_retry_at ?? '');
     expect(retry).toBeGreaterThan(Date.now() + 29 * 24 * 60 * 60 * 1000);
+  });
+
+  it('skips unmapped feeds during a global refresh', async () => {
+    const db = tempDb();
+    const section = createSection(db, 'Mapped', 0, 'mapped');
+    const mapped = createFeed(db, 'https://example.com/mapped.xml');
+    const orphan = createFeed(db, 'https://example.com/orphan.xml');
+    assignFeedToSection(db, mapped.id, section.id);
+    vi.stubGlobal('fetch', vi.fn(async (requestUrl: string) => {
+      if (String(requestUrl).includes('orphan')) throw new Error('orphan must not be fetched');
+      return new Response(rss(item('Mapped item', 'https://example.com/mapped-a')), { status: 200 });
+    }));
+
+    const result = await syncAllFeeds(db);
+
+    const syncedFeedIds = result.results.map((row) => row.feedId);
+    expect(syncedFeedIds).not.toContain(orphan.id);
+    expect(syncedFeedIds).toContain(mapped.id);
+    expect(result.requested).toBe(result.results.length);
+    expect(getFeed(db, orphan.id)).toBeTruthy();
   });
 });

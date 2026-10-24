@@ -12,4 +12,5 @@ export const HELP_TEXT = {
   sourceInterval: 'Automatically refresh this source after this many minutes. Suggested: 30 minutes.',
   muteFeed: 'Muting silences a source: automatic and manual refreshes skip it, its chip greys out, and existing items and settings are kept. Unmuting brings it back.',
   removeFeed: 'Remove this feed from the current section. The shared source and stored articles are retained if used elsewhere.',
+  diagnostics: 'Write a diagnostics bundle (migrations, recent fetch results, and logs) to your exports folder.',
 } as const;

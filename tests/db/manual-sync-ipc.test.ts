@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { closeDb, initDb } from '../../app/core/storage/db';
-import { createFeed, updateFeedSettings } from '../../app/core/storage/dao/feedsDao';
+import { createFeed, getFeed, updateFeedSettings } from '../../app/core/storage/dao/feedsDao';
 import { assignFeedToSection, createSection } from '../../app/core/storage/dao/sectionsDao';
 import { insertItems, markItemRead } from '../../app/core/storage/dao/itemsDao';
 import { registerIpcHandlers } from '../../app/main/ipc';
@@ -125,6 +125,31 @@ describe('manual sync IPC', () => {
     const synced = await ipc.get('sync:trigger')!(null, { feedId: first.feed.id });
     expect(synced).toMatchObject({ status: 'ok', errors: 0 });
     expect((db.prepare('SELECT COUNT(*) AS count FROM feed_sections WHERE feed_id=? AND section_id=?').get(first.feed.id, section.id) as { count: number }).count).toBe(1);
+  });
+
+  it('deletes a feed once its last section mapping is removed but keeps shared feeds', async () => {
+    const db = tempDb();
+    const sectionA = createSection(db, 'Desk A', 0, 'desk-a');
+    const sectionB = createSection(db, 'Desk B', 1, 'desk-b');
+    const orphan = createFeed(db, 'https://example.com/orphan.xml');
+    const shared = createFeed(db, 'https://example.com/shared.xml');
+    assignFeedToSection(db, orphan.id, sectionA.id);
+    assignFeedToSection(db, shared.id, sectionA.id);
+    assignFeedToSection(db, shared.id, sectionB.id);
+    insertItems(db, orphan.id, [{ link: 'https://example.com/o1', title: 'O1', dedupe_key: 'o1' }]);
+
+    const handlersMap = handlers();
+
+    await handlersMap.get('feeds:removeFromSection')!(null, { feedId: shared.id, sectionId: sectionA.id });
+    expect(getFeed(db, shared.id)).toBeTruthy();
+    expect((db.prepare('SELECT COUNT(*) AS count FROM feed_sections WHERE feed_id=?').get(shared.id) as { count: number }).count).toBe(1);
+
+    await handlersMap.get('feeds:removeFromSection')!(null, { feedId: shared.id, sectionId: sectionB.id });
+    expect(getFeed(db, shared.id)).toBeUndefined();
+
+    await handlersMap.get('feeds:removeFromSection')!(null, { feedId: orphan.id, sectionId: sectionA.id });
+    expect(getFeed(db, orphan.id)).toBeUndefined();
+    expect((db.prepare('SELECT COUNT(*) AS count FROM items WHERE feed_id=?').get(orphan.id) as { count: number }).count).toBe(0);
   });
 
   it('aggregates item and unread counts across every listed feed in one response', async () => {

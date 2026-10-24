@@ -2,7 +2,8 @@
 import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react';
 import { applyColorScheme, COLOR_SCHEMES, DEFAULT_COLOR_SCHEME_ID, getColorScheme } from '../../shared/colorSchemes';
 import type { ColorSchemeId } from '../../shared/colorSchemes';
-import type { FeedWire, ItemWire, LayoutModeWire, LayoutWire, PreloadApi, SectionAppearanceWire, SectionWire, SyncCompletedWire, SyncProgressWire } from '../../shared/ipcTypes';
+import { READER_TAB_STRIP_HEIGHT } from '../../shared/ipcTypes';
+import type { FeedWire, ItemWire, LayoutModeWire, LayoutWire, PreloadApi, ReaderBoundsWire, ReaderStateWire, SectionAppearanceWire, SectionWire, SyncCompletedWire, SyncProgressWire } from '../../shared/ipcTypes';
 import { SectionPanel } from './SectionPanel';
 import { AppearanceEditor } from './AppearanceEditor';
 import { ItemList } from './ItemList';
@@ -30,6 +31,23 @@ const ISO_LIKE_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
 
 function itemSortTime(item: ItemWire) {
   return item.published_at && ISO_LIKE_TIMESTAMP.test(item.published_at) ? item.published_at : item.created_at;
+}
+
+const READER_SPLIT_MIN = 0.3;
+const READER_SPLIT_MAX = 0.6;
+const READER_SPLIT_STORAGE_KEY = 'readit:readerSplit';
+const KEYBOARD_SHORTCUTS_STORAGE_KEY = 'readit:keyboardShortcuts';
+
+function readStoredReaderSplit(): number {
+  const stored = window.localStorage.getItem(READER_SPLIT_STORAGE_KEY);
+  if (stored === null) return 0.5;
+  const value = Number(stored);
+  if (!Number.isFinite(value) || value <= 0) return 0.5;
+  return Math.min(READER_SPLIT_MAX, Math.max(READER_SPLIT_MIN, value));
+}
+
+function readStoredKeyboardShortcuts(): boolean {
+  return window.localStorage.getItem(KEYBOARD_SHORTCUTS_STORAGE_KEY) === '1';
 }
 
 function emptyItems(sections: SectionWire[]): ItemState {
@@ -68,6 +86,12 @@ export function AppShell() {
   const [error, setError] = React.useState<string | null>(null);
   const [transientError, setTransientError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
+  const [readerState, setReaderState] = React.useState<ReaderStateWire | null>(null);
+  const [keyboardShortcuts, setKeyboardShortcuts] = React.useState(readStoredKeyboardShortcuts);
+  const [shortcutMapOpen, setShortcutMapOpen] = React.useState(false);
+  const readerSplitRef = React.useRef(readStoredReaderSplit());
+  const keyboardFocusRef = React.useRef(-1);
+  const keyboardFocusedCardRef = React.useRef<HTMLElement | null>(null);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [searchUnread, setSearchUnread] = React.useState(false);
   const [searchImportant, setSearchImportant] = React.useState(false);
@@ -218,9 +242,17 @@ export function AppShell() {
       setError('READIT preload API unavailable. Restart the application or rebuild the preload bundle.');
       return;
     }
-    return window.readit.onSyncProgress?.((progress: SyncProgressWire) => {
+    const pendingProgressReloads = new Map<number, number>();
+    const unsubscribe = window.readit.onSyncProgress?.((progress: SyncProgressWire) => {
       if (progress.sectionId) {
         setSyncProgress((current) => ({ ...current, [progress.sectionId as number]: progress.percent }));
+        const sectionId = progress.sectionId as number;
+        const existing = pendingProgressReloads.get(sectionId);
+        if (existing !== undefined) window.clearTimeout(existing);
+        pendingProgressReloads.set(sectionId, window.setTimeout(() => {
+          pendingProgressReloads.delete(sectionId);
+          void loadItems(sectionId);
+        }, 750));
       } else {
         setGlobalProgress(progress.percent);
       }
@@ -237,7 +269,11 @@ export function AppShell() {
           }
         }, 800);
       }
-    }) || (() => {});
+    });
+    return () => {
+      unsubscribe?.();
+      for (const timer of pendingProgressReloads.values()) window.clearTimeout(timer);
+    };
   }, []);
 
   React.useEffect(() => {
@@ -262,6 +298,152 @@ export function AppShell() {
       if (reloadTimer !== undefined) window.clearTimeout(reloadTimer);
     };
   }, []);
+
+  React.useEffect(() => {
+    const unsubscribe = window.readit?.onReaderState?.((state) => setReaderState(state));
+    return () => {
+      unsubscribe?.();
+    };
+  }, []);
+
+  React.useEffect(() => {
+    const dockSectionKey = readerState?.dockSectionKey;
+    if (!dockSectionKey) return;
+    let frame = 0;
+    let scheduled = false;
+    const reposition = () => {
+      if (scheduled) return;
+      scheduled = true;
+      frame = window.requestAnimationFrame(() => {
+        scheduled = false;
+        const bounds = sectionReaderBounds(dockSectionKey);
+        if (bounds && window.readit) {
+          void window.readit.repositionReader({ sectionKey: dockSectionKey, bounds }).catch(() => undefined);
+        }
+      });
+    };
+    const sectionsElement = document.querySelector('.sections');
+    sectionsElement?.addEventListener('scroll', reposition, { passive: true });
+    window.addEventListener('resize', reposition);
+    const dockedElement = panelElements.current.get(dockSectionKey);
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(reposition);
+    dockedElement ? observer?.observe(dockedElement) : reposition();
+    reposition();
+    return () => {
+      sectionsElement?.removeEventListener('scroll', reposition);
+      window.removeEventListener('resize', reposition);
+      observer?.disconnect();
+      window.cancelAnimationFrame(frame);
+    };
+  }, [readerState?.dockSectionKey]);
+
+  function applyKeyboardFocus(index: number): number {
+    const cards = document.querySelectorAll<HTMLElement>('.sections .item-card');
+    if (cards.length === 0) return -1;
+    const clamped = Math.max(0, Math.min(cards.length - 1, index));
+    if (keyboardFocusedCardRef.current) keyboardFocusedCardRef.current.classList.remove('keyboard-focus');
+    const target = cards[clamped];
+    target.classList.add('keyboard-focus');
+    if (typeof target.scrollIntoView === 'function') target.scrollIntoView({ block: 'nearest' });
+    keyboardFocusedCardRef.current = target;
+    return clamped;
+  }
+
+  function clearKeyboardFocus() {
+    if (keyboardFocusedCardRef.current) keyboardFocusedCardRef.current.classList.remove('keyboard-focus');
+    keyboardFocusedCardRef.current = null;
+    keyboardFocusRef.current = -1;
+  }
+
+  function clickFocusedCard(selector: string) {
+    const target = keyboardFocusedCardRef.current?.querySelector(selector) as HTMLElement | null;
+    target?.click();
+  }
+
+  function markFocusedCardRead() {
+    const card = keyboardFocusedCardRef.current;
+    if (!card) return;
+    const itemId = Number(card.dataset.itemId);
+    const sectionId = Number(card.dataset.sectionId);
+    const item = sectionId > 0
+      ? items[sectionId]?.items.find((row) => row.id === itemId)
+      : searchResults.find((row) => row.id === itemId);
+    if (!item) return;
+    void run(async () => {
+      await api().markItemRead({ itemId: item.id });
+      if (sectionId > 0) {
+        setItems((current) => ({
+          ...current,
+          [sectionId]: {
+            ...(current[sectionId] || { loading: false, error: null, warning: null, items: [], hasOlder: false }),
+            items: (current[sectionId]?.items || []).map((row) => row.id === item.id ? { ...row, is_read: 1 as const } : row),
+          },
+        }));
+      } else {
+        setSearchResults((current) => current.map((row) => row.id === item.id ? { ...row, is_read: 1 as const } : row));
+      }
+    });
+  }
+
+  function toggleKeyboardShortcuts() {
+    const next = !keyboardShortcuts;
+    setKeyboardShortcuts(next);
+    window.localStorage.setItem(KEYBOARD_SHORTCUTS_STORAGE_KEY, next ? '1' : '0');
+    setShortcutMapOpen(next);
+    if (!next) clearKeyboardFocus();
+  }
+
+  React.useEffect(() => {
+    if (!keyboardShortcuts) {
+      clearKeyboardFocus();
+      return;
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      const editable = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
+      if (event.key === 'Escape') {
+        if (readerState && readerState.tabs.length > 0) void run(() => closeReader());
+        else if (searchVisible) setSearchVisible(false);
+        else clearKeyboardFocus();
+        return;
+      }
+      if (editable) return;
+      if (event.key === 'j' || event.key === 'J' || event.key === 'ArrowDown') {
+        event.preventDefault();
+        keyboardFocusRef.current = applyKeyboardFocus(keyboardFocusRef.current + 1);
+      } else if (event.key === 'k' || event.key === 'K' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        keyboardFocusRef.current = applyKeyboardFocus(keyboardFocusRef.current <= 0 ? 0 : keyboardFocusRef.current - 1);
+      } else if (event.key === 'o' || event.key === 'Enter') {
+        if (keyboardFocusRef.current >= 0) {
+          event.preventDefault();
+          clickFocusedCard('.item-title');
+        }
+      } else if (event.key === 'i' || event.key === 'I') {
+        if (keyboardFocusRef.current >= 0) {
+          event.preventDefault();
+          clickFocusedCard('.important-toggle');
+        }
+      } else if (event.key === 'r' || event.key === 'R') {
+        if (keyboardFocusRef.current >= 0) {
+          event.preventDefault();
+          markFocusedCardRead();
+        }
+      } else if (event.key === '/') {
+        event.preventDefault();
+        (document.querySelector('.search-field input') as HTMLInputElement | null)?.focus();
+      } else if (/^[1-9]$/.test(event.key)) {
+        const section = orderedSections[Number(event.key) - 1];
+        if (section) panelElements.current.get(section.key)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [keyboardShortcuts, readerState, searchVisible, orderedSections, items, searchResults]);
+
   async function persistLayout(next: LayoutWire) {
     const normalized = normalizeLayoutForSections(next, sections);
     setLayoutState(normalized);
@@ -447,12 +629,101 @@ export function AppShell() {
     await refreshSections(sectionId);
   }
 
+  function sectionReaderBounds(sectionKey: string): ReaderBoundsWire | null {
+    const element = panelElements.current.get(sectionKey);
+    if (!element) return null;
+    const rect = element.getBoundingClientRect();
+    if (rect.width < 200 || rect.height < 200) return null;
+    const dockWidth = Math.max(120, Math.round(rect.width * readerSplitRef.current));
+    return {
+      x: Math.round(rect.right) - dockWidth,
+      y: Math.round(rect.top),
+      width: dockWidth,
+      height: Math.round(rect.height),
+    };
+  }
+
+  function repositionReader(sectionKey: string) {
+    const bounds = sectionReaderBounds(sectionKey);
+    if (!bounds) return Promise.resolve(undefined);
+    return window.readit.repositionReader({ sectionKey, bounds })
+      .then((response) => {
+        setReaderState(response.state);
+      })
+      .catch(() => undefined);
+  }
+
+  function startReaderResize(_startClientX: number) {
+    const dockSectionKey = readerState?.dockSectionKey;
+    if (!dockSectionKey) return;
+    const shell = panelElements.current.get(dockSectionKey);
+    if (!shell) return;
+    const rect = shell.getBoundingClientRect();
+    let frame = 0;
+    const onMove = (event: PointerEvent) => {
+      if (frame) return;
+      const clientX = event.clientX;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        const fraction = (rect.right - clientX) / rect.width;
+        readerSplitRef.current = Math.min(READER_SPLIT_MAX, Math.max(READER_SPLIT_MIN, fraction));
+        void repositionReader(dockSectionKey);
+      });
+    };
+    const cleanup = () => {
+      document.body.removeEventListener('pointermove', onMove);
+      document.body.removeEventListener('pointerup', onUp);
+      document.body.removeEventListener('pointercancel', onCancel);
+    };
+    const onUp = () => {
+      cleanup();
+      window.localStorage.setItem(READER_SPLIT_STORAGE_KEY, String(readerSplitRef.current));
+    };
+    const onCancel = () => {
+      cleanup();
+    };
+    document.body.addEventListener('pointermove', onMove);
+    document.body.addEventListener('pointerup', onUp, { once: true });
+    document.body.addEventListener('pointercancel', onCancel, { once: true });
+  }
+
   async function openItem(sectionId: number, item: ItemWire) {
     if (!item.link) return;
     await api().markItemRead({ itemId: item.id });
-    await api().openExternal({ url: item.link });
+    const section = sectionId > 0 ? sections.find((candidate) => candidate.id === sectionId) : undefined;
+    const bounds = section ? sectionReaderBounds(section.key) : null;
+    if (section && bounds) {
+      const response = await api().openReaderTab({
+        sectionKey: section.key,
+        url: item.link,
+        title: item.title || 'Untitled article',
+        bounds,
+      });
+      setReaderState(response.state);
+    } else {
+      await api().openExternal({ url: item.link });
+    }
     if (sectionId > 0) await loadItems(sectionId);
     else await runSearch();
+  }
+
+  async function openUrlExternally(url: string) {
+    await api().openExternal({ url });
+  }
+
+  async function activateReaderTab(tabId: number) {
+    const response = await api().activateReaderTab({ tabId });
+    setReaderState(response.state);
+  }
+
+  async function closeReaderTab(tabId: number) {
+    const response = await api().closeReaderTab({ tabId });
+    setReaderState(response.state);
+  }
+
+  async function closeReader() {
+    const response = await api().closeReader();
+    setReaderState(response.state);
   }
 
   async function toggleImportant(sectionId: number, item: ItemWire) {
@@ -649,7 +920,101 @@ export function AppShell() {
       {transientError ? <div className="app-error transient" role="alert">{transientError}</div> : null}
       {error ? <div className="app-error" role="alert">{error}</div> : null}
       {notice ? <div className="app-notice" role="status">{notice}</div> : null}
-      {searchVisible ? <section className="search-results" aria-label="Search results"><header><h2>Local results</h2><span>{searchResults.length} item(s)</span><button type="button" onClick={() => setSearchVisible(false)}>Close</button></header><div className="search-results-scroll"><ItemList sectionId={-1} items={searchResults} openExternalItem={(sectionId, item) => void run(() => openItem(sectionId, item))} onToggleImportant={(sectionId, item) => void run(() => toggleImportant(sectionId, item))} /></div></section> : null}
+      {searchVisible ? <section className="search-results" aria-label="Search results"><header><h2>Local results</h2><span>{searchResults.length} item(s)</span><button type="button" onClick={() => setSearchVisible(false)}>Close</button></header><div className="search-results-scroll"><ItemList sectionId={-1} items={searchResults} openItem={(sectionId, item) => void run(() => openItem(sectionId, item))} onToggleImportant={(sectionId, item) => void run(() => toggleImportant(sectionId, item))} /></div></section> : null}
+
+      {readerState && readerState.tabs.length > 0 && readerState.dockBounds ? (
+        <>
+          <div
+            className="reader-divider"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize article reader"
+            title="Drag to resize the article reader"
+            style={{
+              left: readerState.dockBounds.x - 4,
+              top: readerState.dockBounds.y,
+              height: readerState.dockBounds.height,
+            } as React.CSSProperties}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              startReaderResize(event.clientX);
+            }}
+          />
+          <div
+            className="reader-strip"
+            role="tablist"
+            aria-label="Article reader tabs"
+            style={{
+              left: readerState.dockBounds.x,
+              top: readerState.dockBounds.y,
+              width: readerState.dockBounds.width,
+              height: READER_TAB_STRIP_HEIGHT,
+            } as React.CSSProperties}
+          >
+          <div className="reader-tabs">
+            {readerState.tabs.map((tab) => (
+              <div key={tab.tabId} className={tab.tabId === readerState.activeTabId ? 'reader-tab selected' : 'reader-tab'}>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab.tabId === readerState.activeTabId}
+                  className="reader-tab-main"
+                  onClick={() => void run(() => activateReaderTab(tab.tabId))}
+                  title={tab.title}
+                >
+                  <span className="reader-tab-title">{tab.title}</span>
+                </button>
+                <button
+                  type="button"
+                  className="reader-tab-close"
+                  aria-label={`Close ${tab.title}`}
+                  onClick={() => void run(() => closeReaderTab(tab.tabId))}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="reader-strip-actions">
+            <button
+              type="button"
+              title="Open the active tab in your system browser"
+              onClick={() => {
+                const active = readerState.tabs.find((tab) => tab.tabId === readerState.activeTabId);
+                if (active) void run(() => openUrlExternally(active.url));
+              }}
+            >
+              Open in browser
+            </button>
+            <button type="button" title="Close the article reader" onClick={() => void run(() => closeReader())}>
+              Close reader
+            </button>
+          </div>
+          </div>
+        </>
+      ) : null}
+
+      {keyboardShortcuts && shortcutMapOpen ? (
+        <div className="shortcut-map" role="dialog" aria-label="Keyboard shortcut reference">
+          <header>
+            <strong>Keyboard shortcuts</strong>
+            <button type="button" aria-label="Close shortcut reference" onClick={() => setShortcutMapOpen(false)}>✕</button>
+          </header>
+          <table>
+            <thead><tr><th>Key</th><th>Action</th></tr></thead>
+            <tbody>
+              <tr><td>j / ArrowDown</td><td>Next article</td></tr>
+              <tr><td>k / ArrowUp</td><td>Previous article</td></tr>
+              <tr><td>o / Enter</td><td>Open the focused article in the reader</td></tr>
+              <tr><td>i</td><td>Toggle important on the focused article</td></tr>
+              <tr><td>r</td><td>Mark the focused article as read</td></tr>
+              <tr><td>/</td><td>Focus the search field</td></tr>
+              <tr><td>1-9</td><td>Jump to a section</td></tr>
+              <tr><td>Esc</td><td>Close the reader, search, or focus ring</td></tr>
+            </tbody>
+          </table>
+        </div>
+      ) : null}
 
       <main className="workspace" id="workspace" tabIndex={-1}>
         {managerOpen ? (
@@ -694,7 +1059,12 @@ export function AppShell() {
                         }}
                       >
                         <strong>{section.name}</strong>
-                        <span>{section.feeds.length} feeds</span>
+                        <span>
+                          {section.feeds.length} feeds
+                          {section.feeds.reduce((total, feed) => total + (feed.unread_count || 0), 0) > 0
+                            ? ` - ${section.feeds.reduce((total, feed) => total + (feed.unread_count || 0), 0)} unread`
+                            : ''}
+                        </span>
                       </button>
                     ))}
                   </div>
@@ -739,6 +1109,16 @@ export function AppShell() {
                     </div>
                   </div>
                   {feedTest.message ? <p className={feedTest.status === 'error' ? 'form-message error' : 'form-message'}>{feedTest.message}</p> : null}
+                </div>
+                <div className="manager-block">
+                  <h2>Keyboard</h2>
+                  <div className="button-row">
+                    <button type="button" onClick={() => toggleKeyboardShortcuts()}>
+                      {keyboardShortcuts ? 'Disable keyboard shortcuts' : 'Enable keyboard shortcuts'}
+                    </button>
+                    {keyboardShortcuts ? <button type="button" onClick={() => setShortcutMapOpen(true)}>Key map</button> : null}
+                  </div>
+                  <p className="manager-note">Shortcuts move a focus ring between articles; they never fire while you are typing.</p>
                 </div>
               </div>
             </div>
@@ -805,6 +1185,12 @@ export function AppShell() {
           ) : orderedSections.map((section, index) => {
             const state = items[section.id] || { loading: false, error: null, warning: null, items: [], hasOlder: false };
             const width = panelWidth(layout, section.key);
+            const readerDocked = readerState !== null && readerState.dockSectionKey === section.key && readerState.tabs.length > 0;
+            const shellStyle: React.CSSProperties = {
+              '--panel-width': `${width}%`,
+              order: index,
+              ...(readerDocked && readerState.dockBounds ? { '--reader-dock-width': `${readerState.dockBounds.width + 12}px` } : {}),
+            } as React.CSSProperties;
             return (
               <div
                 key={section.key}
@@ -812,8 +1198,8 @@ export function AppShell() {
                   if (node) panelElements.current.set(section.key, node);
                   else panelElements.current.delete(section.key);
                 }}
-                className="section-shell"
-                style={{ '--panel-width': `${width}%`, order: index } as React.CSSProperties}
+                className={readerDocked ? 'section-shell reader-open' : 'section-shell'}
+                style={shellStyle}
                 data-panel-id={section.key}
               >
                 <SectionPanel
@@ -830,7 +1216,8 @@ export function AppShell() {
                   onRefresh={(sectionId) => void refreshSection(sectionId)}
                   onLoadOlder={(sectionId) => void loadOlder(sectionId)}
                   onMarkSeen={(sectionId) => void run(() => markSectionSeen(sectionId))}
-                  openExternalItem={(sectionId, item) => void run(() => openItem(sectionId, item))}
+                  onExportDiagnostics={() => void run(() => exportDiagnosticBundle())}
+                  openItem={(sectionId, item) => void run(() => openItem(sectionId, item))}
                   onToggleImportant={(sectionId, item) => void run(() => toggleImportant(sectionId, item))}
                   onToggleMute={(feed, next) => void run(() => toggleMute(feed, next))}
                   onUpdateInterval={(feed, minutes) => void run(() => updateInterval(feed, minutes))}

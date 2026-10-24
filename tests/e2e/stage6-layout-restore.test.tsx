@@ -40,6 +40,12 @@ function apiWithLayout(layoutRef: { current: LayoutWire }): PreloadApi {
     importOpml: vi.fn(async () => ({ imported: 0, skipped: 0 })),
     exportBackup: vi.fn(async () => ({ filePath: 'backup.db' })),
     exportDiagnostics: vi.fn(async () => ({ filePath: 'diagnostics.json', entries: 0 })),
+      openReaderTab: vi.fn(async () => ({ state: null })),
+      activateReaderTab: vi.fn(async () => ({ state: null })),
+      closeReaderTab: vi.fn(async () => ({ state: null })),
+      closeReader: vi.fn(async () => ({ state: null })),
+      repositionReader: vi.fn(async () => ({ state: null })),
+
     openExternal: vi.fn(async () => ({ opened: true })),
   };
 }
